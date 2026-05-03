@@ -75,9 +75,23 @@ class UnipleJpyc extends SC_Plugin_Base
             ));
         }
 
+        // shim を MODULE_REALDIR/UnipleJpyc/payment.php に配置。
+        // EC-CUBE 2 の LC_Page_Shopping_LoadPaymentModule は module_path を MODULE_REALDIR 配下に
+        // 強制する仕様 (= MODULE_REALDIR + module_path を file_exists check) のため、本体は plugin 配下に置きつつ
+        // MODULE_REALDIR には「本体 require だけの shim」を copy する。
+        $shimDir = realpath(MODULE_REALDIR) . '/UnipleJpyc';
+        if (!is_dir($shimDir)) {
+            mkdir($shimDir, 0755, true);
+        }
+        $shimSrc = realpath(dirname(__FILE__) . '/module/payment_shim.php');
+        $shimDst = $shimDir . '/payment.php';
+        if ($shimSrc && file_exists($shimSrc)) {
+            copy($shimSrc, $shimDst);
+        }
+
         // dtb_payment 登録 (= 冪等)
-        // module_path: 絶対 path (= MODULE_REALDIR 配下を期待される、ただし plugin 配置先を直接指定)
-        $modulePath = realpath(dirname(__FILE__) . '/module/payment.php');
+        // module_path: MODULE_REALDIR 相対パス (= LoadPaymentModule の仕様に準拠)
+        $modulePath = 'UnipleJpyc/payment.php';
         $existing = $objQuery->getRow('payment_id, del_flg', 'dtb_payment', 'module_path = ?', array($modulePath));
         if ($existing) {
             // 既存 row を復活 (= del_flg=0)
@@ -136,7 +150,7 @@ class UnipleJpyc extends SC_Plugin_Base
     public static function disable($arrPlugin, $objPluginInstaller = null)
     {
         $objQuery = SC_Query_Ex::getSingletonInstance();
-        $modulePath = realpath(dirname(__FILE__) . '/module/payment.php');
+        $modulePath = 'UnipleJpyc/payment.php';
         $row = $objQuery->getRow('payment_id', 'dtb_payment', 'module_path = ?', array($modulePath));
         if ($row) {
             $objQuery->update('dtb_payment', array(
