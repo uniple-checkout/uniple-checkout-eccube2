@@ -31,12 +31,27 @@ EC-CUBE 2 系加盟店向け、uniple checkout 決済プラグイン。
 cd /var/www/eccube2/data/downloads/plugin/
 git clone https://github.com/<owner>/uniple-eccube2-plugin.git UnipleJpyc
 
-# 2. html/plugin/UnipleJpyc/webhook.php を webhook 受信用に配置
-cp -R UnipleJpyc/html_plugin/* /var/www/eccube2/html/plugin/UnipleJpyc/
-# (MVP 段階は webhook.php のみ、admin 設定画面後 phase で追加)
+# 2. html/plugin/UnipleJpyc/ に webhook.php を配置 (= 公式 plugin install 経由なら自動)
+mkdir -p /var/www/eccube2/html/plugin/UnipleJpyc/
+cp -R /var/www/eccube2/data/downloads/plugin/UnipleJpyc/html_plugin/UnipleJpyc/* \
+      /var/www/eccube2/html/plugin/UnipleJpyc/
 
-# 3. EC-CUBE 管理画面 → 設定 > プラグイン設定 から
-#    UnipleJpyc を install + 有効化
+# 3. EC-CUBE 管理画面 → オーナーズストア > プラグイン管理 から
+#    UnipleJpyc を install + 有効化 (= UnipleJpyc::install() が sql/install.sql 実行)
+
+# 4. 管理画面 → プラグイン設定 → uniple JPYC Checkout で
+#    apiKey + webhookSecret + merchantLabel + apiBaseUrl + mode を入力
+```
+
+## 開発時 (= 直接 SQL で table 作成 + Config 初期化)
+
+公式 install フロー経由でなく開発時に直接 smoke する場合:
+
+```bash
+# 1. 上記 step 1-2 と同じ
+# 2. SQL 直接実行
+mysql -uXXX -pXXX eccube_db < /var/www/eccube2/data/downloads/plugin/UnipleJpyc/sql/install.sql
+# 3. plg_uniple_jpyc_config の row id=1 に値を直接 UPDATE で設定
 ```
 
 ## ⚠️ 必須: presskit 準拠 3 行免責表記
