@@ -49,11 +49,18 @@ class UnipleJpyc extends SC_Plugin_Base
 
     /**
      * 有効化時。
-     * 必要に応じて Config singleton row を初期化。
+     *   - Config singleton row 初期化
+     *   - dtb_payment に「uniple JPYC ウォレット」を冪等 INSERT (or del_flg=0 復活)
+     *   - dtb_payment_options に全 deliv_id を bind (= 全配送方法で選択可能化)
+     *
+     * Codex 推奨: dtb_payment 登録 + memo03 非空 + module_path 設定で
+     * SC_Helper_Payment::useModule() 経由 shopping/load_payment_module.php に流す
      */
     public static function enable($arrPlugin, $objPluginInstaller = null)
     {
         $objQuery = SC_Query_Ex::getSingletonInstance();
+
+        // Config singleton
         $count = (int) $objQuery->count('plg_uniple_jpyc_config', 'id = ?', array(1));
         if ($count === 0) {
             $objQuery->insert('plg_uniple_jpyc_config', array(
@@ -67,14 +74,77 @@ class UnipleJpyc extends SC_Plugin_Base
                 'update_date'     => 'CURRENT_TIMESTAMP',
             ));
         }
+
+        // dtb_payment 登録 (= 冪等)
+        // module_path: 絶対 path (= MODULE_REALDIR 配下を期待される、ただし plugin 配置先を直接指定)
+        $modulePath = realpath(dirname(__FILE__) . '/module/payment.php');
+        $existing = $objQuery->getRow('payment_id, del_flg', 'dtb_payment', 'module_path = ?', array($modulePath));
+        if ($existing) {
+            // 既存 row を復活 (= del_flg=0)
+            $objQuery->update('dtb_payment', array(
+                'del_flg'        => 0,
+                'payment_method' => 'uniple JPYC ウォレット',
+                'memo03'         => 'UnipleJpyc',
+                'note'           => 'JPYC（日本円ステーブルコイン、電子決済手段）でお支払いいただけます。',
+                'fix'            => 2,
+                'rank'           => 99,
+                'charge'         => 0,
+                'charge_flg'     => 0,
+                'status'         => 1,
+                'update_date'    => 'CURRENT_TIMESTAMP',
+            ), 'payment_id = ?', array($existing['payment_id']));
+            $paymentId = (int) $existing['payment_id'];
+        } else {
+            // 新規 INSERT (= rank は自動付与せず固定 99 で末尾)
+            $paymentId = $objQuery->nextVal('dtb_payment_payment_id');
+            $objQuery->insert('dtb_payment', array(
+                'payment_id'     => $paymentId,
+                'payment_method' => 'uniple JPYC ウォレット',
+                'memo03'         => 'UnipleJpyc',
+                'module_path'    => $modulePath,
+                'note'           => 'JPYC（日本円ステーブルコイン、電子決済手段）でお支払いいただけます。',
+                'fix'            => 2,
+                'rank'           => 99,
+                'charge'         => 0,
+                'charge_flg'     => 0,
+                'status'         => 1,
+                'del_flg'        => 0,
+                'creator_id'     => 0,
+                'create_date'    => 'CURRENT_TIMESTAMP',
+                'update_date'    => 'CURRENT_TIMESTAMP',
+            ));
+        }
+
+        // dtb_payment_options で全 deliv_id に bind
+        $arrDeliv = $objQuery->select('deliv_id', 'dtb_deliv', 'del_flg = 0');
+        foreach ($arrDeliv as $deliv) {
+            $exists = $objQuery->count('dtb_payment_options', 'deliv_id = ? AND payment_id = ?', array($deliv['deliv_id'], $paymentId));
+            if ($exists == 0) {
+                $objQuery->insert('dtb_payment_options', array(
+                    'deliv_id'       => $deliv['deliv_id'],
+                    'payment_id'     => $paymentId,
+                    'rank'           => 99,
+                ));
+            }
+        }
     }
 
     /**
      * 無効化時。
+     * Codex 推奨: 物理 DELETE より del_flg=1 + payment_options 削除。
      */
     public static function disable($arrPlugin, $objPluginInstaller = null)
     {
-        // no-op
+        $objQuery = SC_Query_Ex::getSingletonInstance();
+        $modulePath = realpath(dirname(__FILE__) . '/module/payment.php');
+        $row = $objQuery->getRow('payment_id', 'dtb_payment', 'module_path = ?', array($modulePath));
+        if ($row) {
+            $objQuery->update('dtb_payment', array(
+                'del_flg'     => 1,
+                'update_date' => 'CURRENT_TIMESTAMP',
+            ), 'payment_id = ?', array($row['payment_id']));
+            $objQuery->delete('dtb_payment_options', 'payment_id = ?', array($row['payment_id']));
+        }
     }
 
     /**

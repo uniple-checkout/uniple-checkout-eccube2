@@ -1,0 +1,101 @@
+<?php
+/*
+ * uniple JPYC Checkout — payment module for EC-CUBE 2.x
+ *
+ * `dtb_payment.module_path` にこの file の絶対 path を登録、`memo03` 非空に
+ * すると、shopping/load_payment_module.php → SC_Helper_Payment::useModule()
+ * 経由でこの file が require_once される。
+ *
+ * ここで:
+ *   - $_SESSION から order_id 取得 (= LC_Page_Shopping_LoadPaymentModule::getOrderId)
+ *   - dtb_order から amount + 注文情報引く
+ *   - uniple session 作成 (= UnipleJpyc_Client::createSession)
+ *   - IntentMapping (= plg_uniple_jpyc_intent_mapping) に order_id ↔ session_id 保存
+ *   - uniple Hosted Checkout (?wc=1 自動付与済) へ header() redirect
+ *
+ * このファイルは LC_Page_Shopping_LoadPaymentModule の context で実行されるので
+ * $_SESSION / SC_Query / その他 EC-CUBE bootstrap がすべて利用可能。
+ */
+
+require_once realpath(dirname(__FILE__) . '/../lib/UnipleJpyc_Client.php');
+
+$objQuery = SC_Query_Ex::getSingletonInstance();
+
+// load_payment_module.php が parent クラスで getOrderId() を呼んで $order_id を持っているはず。
+// ただしこの module は module_path 経由で include されるため、関数 scope 外。
+// $_SESSION['order_id'] か SC_Helper_Purchase 経由で取得する必要あり。
+$order_id = isset($_SESSION['order_id']) ? (int) $_SESSION['order_id'] : 0;
+if ($order_id === 0) {
+    GC_Utils_Ex::gfPrintLog('[uniple-payment] no order_id in session', 'uniple_payment.log');
+    SC_Utils_Ex::sfDispSiteError(PAGE_ERROR, '', true);
+    return;
+}
+
+// 注文情報取得
+$arrOrder = $objQuery->getRow('order_id, payment_total, order_name01, order_name02', 'dtb_order', 'order_id = ?', array($order_id));
+if (!$arrOrder) {
+    GC_Utils_Ex::gfPrintLog('[uniple-payment] order_not_found order_id=' . $order_id, 'uniple_payment.log');
+    SC_Utils_Ex::sfDispSiteError(PAGE_ERROR, '', true);
+    return;
+}
+
+$amount = (int) $arrOrder['payment_total'];
+$itemName = 'Order #' . $order_id;
+// 注文の最初の商品名で description を作る (= optional、失敗しても続行)
+$arrFirstItem = $objQuery->getRow('product_name', 'dtb_order_detail', 'order_id = ? ORDER BY order_detail_id', array($order_id));
+if ($arrFirstItem && !empty($arrFirstItem['product_name'])) {
+    $itemName = $arrFirstItem['product_name'];
+}
+
+// Config 読込
+$arrConfig = $objQuery->getRow('*', 'plg_uniple_jpyc_config', 'id = ?', array(1));
+if (!$arrConfig || empty($arrConfig['api_key'])) {
+    GC_Utils_Ex::gfPrintLog('[uniple-payment] config not initialized or api_key empty', 'uniple_payment.log');
+    SC_Utils_Ex::sfDispSiteError(FREE_ERROR_MSG, '', true, 'uniple JPYC 決済が利用できません。管理者にお問い合わせください。');
+    return;
+}
+
+// shop URL の組立 (= return / cancel / webhook)
+$shopBase = rtrim(HTTPS_URL, '/');
+$merchantOrderId = sprintf('eccube2-%d-%s', $order_id, bin2hex(random_bytes(4)));
+$successUrl = $shopBase . '/plugin/UnipleJpyc/return.php?orderId=' . $order_id . '&sessionId={CHECKOUT_SESSION_ID}';
+$cancelUrl  = $shopBase . '/plugin/UnipleJpyc/cancel.php?orderId=' . $order_id;
+$webhookUrl = $shopBase . '/plugin/UnipleJpyc/webhook.php';
+
+// uniple session 作成
+try {
+    $client = new UnipleJpyc_Client(array(
+        'api_key'        => $arrConfig['api_key'],
+        'webhook_secret' => $arrConfig['webhook_secret'],
+        'merchant_label' => $arrConfig['merchant_label'],
+        'api_base_url'   => $arrConfig['api_base_url'],
+        'mode'           => $arrConfig['mode'],
+    ));
+    $session = $client->createSession(array(
+        'amountJpyc'      => $amount,
+        'merchantOrderId' => $merchantOrderId,
+        'itemName'        => $itemName,
+        'successUrl'      => $successUrl,
+        'cancelUrl'       => $cancelUrl,
+        'webhookUrl'      => $webhookUrl,
+    ));
+} catch (Exception $e) {
+    GC_Utils_Ex::gfPrintLog('[uniple-payment] session_create_failed order_id=' . $order_id . ' error=' . $e->getMessage(), 'uniple_payment.log');
+    SC_Utils_Ex::sfDispSiteError(FREE_ERROR_MSG, '', true, 'uniple セッション作成に失敗しました。しばらくしてから再度お試しください。');
+    return;
+}
+
+// IntentMapping 保存
+$objQuery->insert('plg_uniple_jpyc_intent_mapping', array(
+    'order_id'    => $order_id,
+    'session_id'  => $session['sessionId'],
+    'amount_jpyc' => (string) $amount,
+    'status'      => 'pending',
+    'created_at'  => date('Y-m-d H:i:s'),
+));
+
+GC_Utils_Ex::gfPrintLog('[uniple-payment] session_created order_id=' . $order_id . ' sessionId=' . $session['sessionId'] . ' amount=' . $amount, 'uniple_payment.log');
+
+// uniple Hosted Checkout へ外部 redirect (= ?wc=1 は client 側で自動付与済)
+header('Location: ' . $session['checkoutUrl'], true, 302);
+exit;
