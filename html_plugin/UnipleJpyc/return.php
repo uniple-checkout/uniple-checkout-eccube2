@@ -71,8 +71,9 @@ if ($mapping && $mapping['status'] === 'completed') {
         // 標準 LC_Page_Shopping_Complete のコメント: 「プラグインなどで order_id を取得する場合があるため」
         $_SESSION['order_id'] = (int) $mapping['order_id'];
 
-        // pending_order_id を再使用防止のため unset (= 二重 return 時は ?cs fallback 経路に倒れる)
-        unset($_SESSION['uniple_jpyc_pending_order_id']);
+        // pending_order_id は keep する (= uniple は successUrl を 2 回連続 GET する観測あり、
+        // 2 回目で unset 済だと mapping null 経路に倒れて pending fallback redirect に飛ぶため)。
+        // 次回の購入で payment.php が別 order_id で上書きするので残しておいても安全。
 
         // 標準の注文完了ページへ
         GC_Utils_Ex::gfPrintLog('[uniple-return] complete order_id=' . $mapping['order_id'] . ' sessionId=' . $unipleSessionId, 'uniple_return.log');
