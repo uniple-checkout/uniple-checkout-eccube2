@@ -25,7 +25,21 @@ if ($sessionId !== '') {
 $objResponse = new SC_Response_Ex();
 
 if ($mapping && $mapping['status'] === 'completed') {
-    // 入金済 → 標準の注文完了ページへ
+    // 入金済 → cart を空にする (= EC-CUBE 標準の SC_Helper_Purchase::completeOrder 経路を
+    // 通らない Hosted Checkout flow でも cart を残さないため)。
+    // SC_CartSession::delAllProducts は商品種別 ID をキーに削除する設計、
+    // 通常購入と同じく現在の cartKey で purge する。
+    try {
+        $objCartSession = new SC_CartSession_Ex();
+        $cartKey = $objCartSession->getKey();
+        if ($cartKey !== null && $cartKey !== '') {
+            $objCartSession->delAllProducts($cartKey);
+        }
+    } catch (Exception $e) {
+        GC_Utils_Ex::gfPrintLog('[uniple-return] cart_purge_failed order_id=' . $mapping['order_id'] . ' error=' . $e->getMessage(), 'uniple_return.log');
+    }
+
+    // 標準の注文完了ページへ
     GC_Utils_Ex::gfPrintLog('[uniple-return] complete order_id=' . $mapping['order_id'] . ' sessionId=' . $sessionId, 'uniple_return.log');
     $objResponse->sendRedirect(SHOPPING_COMPLETE_URLPATH, array(), true);
     exit;
