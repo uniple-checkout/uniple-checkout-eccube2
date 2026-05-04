@@ -64,6 +64,12 @@ if ($mapping && $mapping['status'] === 'completed') {
             GC_Utils_Ex::gfPrintLog('[uniple-return] cart_purge_failed order_id=' . $mapping['order_id'] . ' error=' . $e->getMessage(), 'uniple_return.log');
         }
 
+        // LC_Page_Shopping_Complete::action() は $_SESSION['order_id'] を見て注文番号を表示する。
+        // 通常 path では SC_Helper_Purchase::registerOrderComplete が set するが、
+        // Hosted Checkout 経路ではそれを通らないため、 ここで session 復元する必要がある。
+        // 標準 LC_Page_Shopping_Complete のコメント: 「プラグインなどで order_id を取得する場合があるため」
+        $_SESSION['order_id'] = (int) $mapping['order_id'];
+
         // 標準の注文完了ページへ
         GC_Utils_Ex::gfPrintLog('[uniple-return] complete order_id=' . $mapping['order_id'] . ' sessionId=' . $sessionId, 'uniple_return.log');
         $objResponse->sendRedirect(SHOPPING_COMPLETE_URLPATH, array(), true);
