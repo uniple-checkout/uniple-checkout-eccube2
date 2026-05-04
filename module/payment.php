@@ -56,9 +56,12 @@ if (!$arrConfig || empty($arrConfig['api_key'])) {
 }
 
 // shop URL の組立 (= return / cancel / webhook)
+// uniple は successUrl に完走時 ?orderId=pay-sp_v3_... / ?cs=ucs_... 等を append
+// する仕様 (= placeholder 展開仕様は uniple 側にない、 2026-05-04 確定)。
+// EC-CUBE 内部 order id は $_SESSION 経路で渡し、 uniple の ?orderId 上書きを回避する。
 $shopBase = rtrim(HTTPS_URL, '/');
 $merchantOrderId = sprintf('eccube2-%d-%s', $order_id, bin2hex(random_bytes(4)));
-$successUrl = $shopBase . '/plugin/UnipleJpyc/return.php?orderId=' . $order_id . '&sessionId={CHECKOUT_SESSION_ID}';
+$successUrl = $shopBase . '/plugin/UnipleJpyc/return.php';
 $cancelUrl  = $shopBase . '/plugin/UnipleJpyc/cancel.php?orderId=' . $order_id;
 $webhookUrl = $shopBase . '/plugin/UnipleJpyc/webhook.php';
 
@@ -93,6 +96,11 @@ $objQuery->insert('plg_uniple_jpyc_intent_mapping', array(
     'status'      => 'pending',
     'created_at'  => date('Y-m-d H:i:s'),
 ));
+
+// EC-CUBE 内部 order id を $_SESSION に保存。 return.php 側で復元する。
+// uniple の ?orderId append (= uniple 側 ID) で plugin の EC-CUBE 内部 ID が
+// URL から読めないため、 session 経路で渡す。
+$_SESSION['uniple_jpyc_pending_order_id'] = (int) $order_id;
 
 GC_Utils_Ex::gfPrintLog('[uniple-payment] session_created order_id=' . $order_id . ' sessionId=' . $session['sessionId'] . ' amount=' . $amount, 'uniple_payment.log');
 
