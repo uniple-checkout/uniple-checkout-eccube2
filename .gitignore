@@ -1,0 +1,10 @@
+# 公式ストア提出用 zip パッケージ出力先 (= bin/package.sh)
+build/
+
+# vendor / dev artifacts
+vendor/
+.DS_Store
+*.swp
+
+# webhook log file (= plugin 動作中に html/plugin 配下に生成される)
+html_plugin/UnipleJpyc/webhook.log
