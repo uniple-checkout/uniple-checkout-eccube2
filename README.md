@@ -150,6 +150,30 @@ EC-CUBE 2.17 系 (= Composer 化版) では `MODULE_REALDIR` が
 **「本体は plugin 配下、 MODULE_REALDIR には本体を require するだけの shim を
 配置」** という 2 段構成で実装している。 詳細は `module/payment_shim.php` 参照。
 
+### uniple API 一時障害時の挙動 + 自動 retry 非実装の判断
+
+UnipleJpyc_Client::createSession で uniple API endpoint が 4xx / 5xx を返した
+場合 (= rare、 transient)、 plugin は Exception を throw し module/payment.php
+側で catch して EC-CUBE 標準 `SHOPPING_ERROR_URLPATH` (= `/shopping/error.php`)
+にリダイレクトする。 在庫 / 注文 record / mapping / webhook いずれも触らない
+defensive 動作で、 整合性は保たれる。
+
+**plugin 側で自動 retry を実装しない判断:**
+
+uniple API の単発失敗 (= 5xx / timeout) 時に plugin が自動 retry すると、
+upstream 側で先行 request が遅延処理されて成立した場合に **二重 session 作成 →
+二重決済 risk** が発生する。 user 同意なしの自動 retry は payment plugin の
+原則として禁止 (= EC-CUBE 標準 / Stripe / PayPay 各社 plugin の慣行とも整合)。
+
+= **canonical な復旧経路は user 手動 retry** (= cart に戻って再 checkout)。
+EC-CUBE 標準の error 画面 + 加盟店側の microcopy で「数分後に再度お試しください」
+と案内する。
+
+加盟店側が独自に retry layer を実装したい場合、 uniple Merchant API は
+`clientReferenceId` を idempotency 鍵として尊重する仕様 (= 同 clientReferenceId
+の重複 POST は同 session を返す) があるため、 同 key で safe に retry 可能。
+ただし plugin MVP scope には含めない。
+
 ## ライセンス
 
 GPL (= EC-CUBE 2.x 標準ライセンス互換)
