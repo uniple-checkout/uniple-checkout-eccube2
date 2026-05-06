@@ -74,6 +74,82 @@ JPYC 株式会社の presskit (= JPYC Logo Guideline v1.1, 2025.08.12) ガイド
 - ASP / multi-tenant 拡張は別 phase
 - HashPort + Android 16 + LIFF IAB の特殊条件で setup 初回 signing が稀に失敗
 
+## 実装メモ (= return / cart / cross-device の運用仕様)
+
+加盟店 onboarding および公式ストア審査向けの設計判断記録。
+
+### 経路の独立性 (= cross-over fallback 禁止)
+
+uniple は 3 経路をサポート: **LINE 経由 (`/lq/*`) / WC 直 (`?wc=1`) / autopay
+opt-in (`?autopay=1`)**。 各経路は完全に独立した UX flow であり、 plugin / uniple
+ともに **経路をまたぐ自動 fallback は実装しない**。 LINE 完走失敗時に WC 直に
+勝手に切り替える、 autopay setup 失敗時に通常経路に戻す 等は禁止。 加盟店向け
+独自実装でも同原則を維持すること。
+
+### successUrl 仕様 (= Plan P)
+
+plugin は uniple の `successUrl` に **plain URL** を渡す:
+
+```
+https://merchant.example/plugin/UnipleJpyc/return.php
+```
+
+uniple は完走時に下記 query を append する:
+
+| query key | 内容 |
+|---|---|
+| `?cs` | uniple Checkout Session ID (= `ucs_...`) |
+| `?orderId` | uniple 側注文 ID (= `pay-sp_v3_...`、 plugin の EC-CUBE 内部 ID とは別物) |
+| `?txHash` | on-chain Tx hash |
+| `?merchantOrderId` | session 作成時の clientReferenceId |
+| `?payId` | uniple 支払い ID (= `sp_v3_...`) |
+
+plugin は EC-CUBE 内部 order id を `$_SESSION['uniple_jpyc_pending_order_id']`
+で session 経路で渡し、 return.php で復元する (= ?orderId が uniple 側 ID で
+上書きされる衝突を回避)。 return URL に literal placeholder
+(= `{CHECKOUT_SESSION_ID}` 等) を埋め込まないこと。
+
+### 完走 return.php の責務
+
+`/plugin/UnipleJpyc/return.php` 着地時に plugin は下記を冪等に処理する:
+
+1. **mapping lookup** = primary は `$_SESSION['uniple_jpyc_pending_order_id']`、 fallback は `?cs` query
+2. **認可 check** = ログイン顧客の場合は `dtb_order.customer_id` 一致確認
+3. **cart purge** = `SC_CartSession_Ex::delAllProducts($cartKey)` で cart を空に
+4. **session 復元** = `$_SESSION['order_id'] = $orderId` (= LC_Page_Shopping_Complete
+   が注文番号表示に使用、 標準コードに「プラグインなどで order_id を取得する場合
+   がある」 コメント明記あり)
+
+uniple は successUrl を **2 回連続 GET する観測あり** (= 1 回目 user 着地、
+2 回目 bot preload / browser preload 等)。 `pending_order_id` は完走 redirect 後
+**keep する** (= 2 回目 hit でも mapping completed 判定が成立する)。
+次回購入時に payment.php が新 order id で上書きするので残しても安全。
+認可 fail 時のみ unset する。
+
+EC-CUBE 2 系は dtb_cart テーブルが無く cart は session のみで管理されるため、
+cross-device で session 跨いでも干渉せず cart 残留 race の発生条件にならない
+(= 4 系 plugin で必要な customer_id ベース全 cart 物理 DELETE は 2 系では不要)。
+
+### cross-device 完走 (= uniple Plan U1)
+
+uniple Hosted Checkout は **mobile UA + handoff=qr marker** を検出した場合、
+スマホ側で「✅ 決済が完了しました / PC のブラウザに戻ってご確認ください」
+画面を表示し、 successUrl への遷移を skip する。 PC 側は polling で完走検知
+→ successUrl に自動遷移する。
+
+= cross-device (= PC 起点 → スマホ QR スキャン → スマホで wallet 完走) でも、
+PC のサンクスページに自動到達し PC の login session が維持される。 業界標準
+(= PayPay, Stripe, WalletConnect の dapp/wallet device 分離モデル) と整合。
+
+### 2.17 系特有: MODULE_REALDIR の罠
+
+EC-CUBE 2.17 系 (= Composer 化版) では `MODULE_REALDIR` が
+**`/var/www/eccube2/data/downloads/module/`** に変更されている (= 旧
+`/var/www/eccube2/data/module/` ではない)。 LC_Page_Shopping_LoadPaymentModule は
+`dtb_payment.module_path` を MODULE_REALDIR 配下に強制する仕様のため、 plugin は
+**「本体は plugin 配下、 MODULE_REALDIR には本体を require するだけの shim を
+配置」** という 2 段構成で実装している。 詳細は `module/payment_shim.php` 参照。
+
 ## ライセンス
 
 GPL (= EC-CUBE 2.x 標準ライセンス互換)
