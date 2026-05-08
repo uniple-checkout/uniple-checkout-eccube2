@@ -1,0 +1,46 @@
+name: Packaging for EC-CUBE 2.x Plugin (= bin/package.sh ベース、 公式ストア提出 tar.gz 生成)
+# GitHub release を published すると、 bin/package.sh で tar.gz を生成し
+# release asset として upload する。 ローカルで bash bin/package.sh して
+# 動作確認済みの packaging logic と一致するため、 release artifact と
+# 開発者の手元 tar.gz が必ず一致する。
+#
+# 注意: EC-CUBE 2 系の tar.gz は plugin_info.php が archive root 直下
+# (= 4 系と異なり Code/ サブディレクトリ無し)。
+
+on:
+  release:
+    types: [ published ]
+
+jobs:
+  build:
+    name: Build tar.gz package
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP (= bin/package.sh が plugin_info.php 読むのに必要)
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.0'
+
+      - name: Build tar.gz via bin/package.sh
+        run: bash bin/package.sh build
+
+      - name: Locate built archive
+        id: archive
+        run: |
+          ARCHIVE_PATH=$(find build -maxdepth 1 -type f -name 'UnipleJpyc-*.tar.gz' | head -1)
+          if [[ -z "${ARCHIVE_PATH}" ]]; then
+            echo "ERROR: build/ 配下に tar.gz が生成されませんでした" >&2
+            exit 1
+          fi
+          echo "path=${ARCHIVE_PATH}" >> "$GITHUB_OUTPUT"
+          echo "name=$(basename ${ARCHIVE_PATH})" >> "$GITHUB_OUTPUT"
+
+      - name: Upload tar.gz to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.archive.outputs.path }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
