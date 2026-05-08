@@ -73,7 +73,12 @@ JPYC 株式会社の presskit (= JPYC Logo Guideline v1.1, 2025.08.12) ガイド
 - 自動返金未対応 (= 加盟店から購入者へ JPYC 直送)
 - LINE 経由 (`/api/intent`) は MVP 後の追加対応
 - ASP / multi-tenant 拡張は別 phase
-- HashPort + Android 16 + LIFF IAB の特殊条件で setup 初回 signing が稀に失敗
+- **HashPort wallet 関連**:
+  - 連続購入 / 時間経過後 / 別 wallet 切替後の setup で「接続が不安定です」 等の
+    signing 不調 → **HashPort アプリで一度ログアウト → 再ログイン**で解消 (= WC v2
+    daemon の clean reset、 4/26 実証)
+  - 古いウォレット (= HashPort リリース直後作成、 EIP-7702 化済) は setup 不可、
+    新規 wallet 作成を案内 (= uniple 側救済不可、 影響 user 数少)
 
 ## 実装メモ (= return / cart / cross-device の運用仕様)
 

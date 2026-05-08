@@ -407,7 +407,28 @@ uniple は **test mode endpoint を持たない**ため、 開発環境でも実
 - canonical な復旧経路は user 手動 retry (= cart に戻って再 checkout)
 - 加盟店向け microcopy 例: 「決済システムが一時的にご利用できません。 数分後に再度お試しください。」
 
-詳細は EC-CUBE 4 plugin の [docs/integration-guide.md §8 トラブルシューティング](./integration-guide.md#8-トラブルシューティング) 参照
+### HashPort で「接続が不安定です」 等の signing 不調
+HashPort wallet で連続購入 / 時間経過後 / 別 wallet 切替後の setup で signing
+失敗する場合 (= `permit2_sign_error` / connector idle / app 内 modal 重複)、
+**HashPort アプリで一度ログアウト → 再ログイン**を user に案内する (= WC v2
+daemon の clean reset、 多くのケースで完走)。
+
+dapp 側で WC v2 protocol 標準対策 (= AppKit dispose / retry 抑止 / localStorage
+clear) は uniple 本体で実施済みだが、 HashPort app 内 daemon までは触れないため、
+user 側手動操作が必要。
+
+加盟店向け microcopy 例:
+> 「ウォレット接続が不安定です。 HashPort アプリで一度ログアウトしてから
+> 再ログインの上、 もう一度「支払う」 をお試しください。」
+
+### HashPort 古いウォレットで setup 不可
+HashPort リリース直後に作成された古い wallet で **EIP-7702 化** されたものは
+Permit2 EIP-1271 検証で revert する既知症状あり (= uniple 側救済不可、 影響
+user 数少)。 加盟店経由でこの種の user が来た場合は **HashPort アプリ内で新規
+wallet 作成**を案内する。
+
+詳細は EC-CUBE 4 plugin の [docs/integration-guide.md §8 トラブルシューティング](./integration-guide.md#8-トラブルシューティング)
++ [§9 既知の制約](./integration-guide.md#9-既知の制約-mvp) 参照
 (= 同じ知見が他カートでも使える)。
 
 ---
