@@ -1,5 +1,5 @@
 {*
- * uniple Checkout — admin config Smarty template for EC-CUBE 2.x
+ * uniple checkout — admin config Smarty template for EC-CUBE 2.x
  *
  * 4 系 plugin の Resource/template/admin/config.twig と同等内容を Smarty で再構成。
  * 法令準拠 (= JPYC は電子決済手段) + 返金未対応 + presskit 必須 3 行免責 を必須表示。
@@ -11,7 +11,7 @@
 
 <div class="contents-main">
 
-    <h2>uniple Checkout 設定</h2>
+    <h2>uniple checkout 設定</h2>
 
     <!-- ⚖️ JPYC の法令上の分類 -->
     <div class="message" style="border:1px solid #d0e3ff; background:#eef5ff; padding:12px; margin:12px 0;">

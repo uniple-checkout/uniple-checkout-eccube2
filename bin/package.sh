@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# uniple Checkout for EC-CUBE 2.x — 公式ストア提出用 tar.gz パッケージング
+# uniple checkout for EC-CUBE 2.x — 公式ストア提出用 tar.gz パッケージング
 #
 # usage:
 #   bin/package.sh [output_dir]

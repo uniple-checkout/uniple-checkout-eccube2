@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# uniple Checkout — 公式ストア提出用 アイコン/ロゴ画像生成
+# uniple checkout — 公式ストア提出用 アイコン/ロゴ画像生成
 #
 # usage:
 #   bin/build-images.sh

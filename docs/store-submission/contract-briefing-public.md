@@ -1,5 +1,5 @@
 ---
-title: uniple Checkout 決済プラグインに関する基本契約・審査手続きのご相談
+title: uniple checkout 決済プラグインに関する基本契約・審査手続きのご相談
 subtitle: EC-CUBE 公式オーナーズストア掲載希望
 author: 株式会社 uniple
 date: 2026-05-08
@@ -8,7 +8,7 @@ geometry: margin=2.5cm
 lang: ja
 ---
 
-# uniple Checkout 決済プラグイン 基本契約・審査手続きに関するご相談
+# uniple checkout 決済プラグイン 基本契約・審査手続きに関するご相談
 
 ## 1. ご相談概要
 
@@ -18,7 +18,7 @@ lang: ja
 | 項目 | 内容 |
 |---|---|
 | 申請主体 | 株式会社 uniple |
-| プラグイン名 | uniple Checkout |
+| プラグイン名 | uniple checkout |
 | 種別 | 決済プラグイン (= 公式決済モジュール以外の決済機能との連携) |
 | 対応 EC-CUBE バージョン | 4.3.x / 4.2.x、 および 2.17.2-p2 / 2.25.0 (= 別パッケージ) |
 | 開発ステータス | MVP 完成、 e2e 決済完走 確認済み |
@@ -69,7 +69,7 @@ lang: ja
 
 ### 加盟店 EC-CUBE サーバを通過するデータ
 - 注文情報 (= 注文 ID、 決済合計額、 顧客情報)
-- uniple Checkout Session ID
+- uniple checkout Session ID
 - webhook payload (= 完走通知、 Tx hash 等の chain 上 evidence)
 
 ### 加盟店 EC-CUBE サーバを **通過しないデータ**

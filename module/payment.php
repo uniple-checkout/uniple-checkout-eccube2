@@ -1,6 +1,6 @@
 <?php
 /*
- * uniple Checkout — payment module for EC-CUBE 2.x
+ * uniple checkout — payment module for EC-CUBE 2.x
  *
  * `dtb_payment.module_path` にこの file の絶対 path を登録、`memo03` 非空に
  * すると、shopping/load_payment_module.php → SC_Helper_Payment::useModule()

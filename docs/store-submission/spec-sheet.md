@@ -8,7 +8,7 @@ EC-CUBE 4 公式ストア (= eccube.co.jp/products/) 申請フォームに記入
 
 ### プラグイン名
 ```
-uniple Checkout
+uniple checkout
 ```
 
 ### サブタイトル / キャッチ

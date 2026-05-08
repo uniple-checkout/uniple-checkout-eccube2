@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# uniple Checkout — 公式ストア提出用 マニュアル PDF 生成 (EC-CUBE 2 系)
+# uniple checkout — 公式ストア提出用 マニュアル PDF 生成 (EC-CUBE 2 系)
 #
 # usage:
 #   bin/build-manual.sh [output_dir]
@@ -34,7 +34,7 @@ fi
 # README + 既存 docs を結合
 {
     echo "---"
-    echo "title: uniple Checkout — 加盟店マニュアル"
+    echo "title: uniple checkout — 加盟店マニュアル"
     echo "subtitle: EC-CUBE 2 系プラグイン (β)"
     echo "author: 株式会社 uniple"
     echo "date: $(date +%Y-%m-%d)"

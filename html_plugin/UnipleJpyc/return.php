@@ -1,6 +1,6 @@
 <?php
 /*
- * uniple Checkout — successUrl 着地点 for EC-CUBE 2.x
+ * uniple checkout — successUrl 着地点 for EC-CUBE 2.x
  *
  * uniple Hosted Checkout 完走後の戻り先。webhook が正本なので、ここは UI 上の戻り。
  *   - mapping.status === 'completed' → shopping/complete + cart purge
@@ -24,7 +24,7 @@ $objQuery = SC_Query_Ex::getSingletonInstance();
 
 // primary: payment.php で $_SESSION に保存した EC-CUBE 内部 order id
 $ecOrderId = isset($_SESSION['uniple_jpyc_pending_order_id']) ? (int) $_SESSION['uniple_jpyc_pending_order_id'] : 0;
-// fallback: ?cs query で uniple Checkout Session ID
+// fallback: ?cs query で uniple checkout Session ID
 $unipleSessionId = isset($_GET['cs']) ? (string) $_GET['cs'] : '';
 
 $mapping = null;
