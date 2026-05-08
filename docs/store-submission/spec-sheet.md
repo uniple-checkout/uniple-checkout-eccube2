@@ -1,6 +1,6 @@
 # 公式ストア提出 spec シート 文案
 
-EC-CUBE 4 公式ストア (= eccube.co.jp/products/) 申請フォームに記入する内容
+EC-CUBE 公式ストア (= eccube.co.jp/products/) 申請フォームに記入する内容
 の文案。 D user (= 株式会社 uniple 法人代表) が公式ストア管理画面で記入する
 際にコピペで使える形。
 
