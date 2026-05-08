@@ -64,7 +64,8 @@ JPYC 株式会社の presskit (= JPYC Logo Guideline v1.1, 2025.08.12) ガイド
 
 ## ドキュメント
 
-- uniple 加盟店 API spec: `https://uniple.io/docs/merchant-api`
+- [Merchant Integration Spec (= 加盟店向け統合仕様書)](docs/merchant-integration-spec.md) — 全カート共通 spec + カート別 reference (= EC-CUBE 4/2 / WP / Shopify / 独自) + onboarding
+- uniple 加盟店 API spec (= SSOT): `https://uniple.io/docs/merchant-api`
 - 4 系 plugin (= 流用元 reference): https://github.com/<owner>/uniple-eccube4-plugin
 
 ## 既知の制約 (MVP)
