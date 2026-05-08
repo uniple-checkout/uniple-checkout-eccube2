@@ -1,6 +1,6 @@
 <?php
 /*
- * uniple JPYC Checkout — cancelUrl 着地点 for EC-CUBE 2.x
+ * uniple Checkout — cancelUrl 着地点 for EC-CUBE 2.x
  *
  * uniple Hosted Checkout でキャンセルされた user の戻り先。
  * 注文 status は webhook (= checkout.session.canceled / failed) で別途 ORDER_CANCEL に

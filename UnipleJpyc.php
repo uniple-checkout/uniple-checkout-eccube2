@@ -1,6 +1,6 @@
 <?php
 /*
- * uniple JPYC Checkout — main plugin class for EC-CUBE 2.x
+ * uniple Checkout — main plugin class for EC-CUBE 2.x
  *
  * SC_Plugin_Base 継承、register() hook で本体に決済 method を注入する。
  *

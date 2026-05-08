@@ -1,6 +1,6 @@
 <?php
 /*
- * uniple JPYC Checkout — successUrl 着地点 for EC-CUBE 2.x
+ * uniple Checkout — successUrl 着地点 for EC-CUBE 2.x
  *
  * uniple Hosted Checkout 完走後の戻り先。webhook が正本なので、ここは UI 上の戻り。
  *   - mapping.status === 'completed' → shopping/complete + cart purge

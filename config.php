@@ -1,6 +1,6 @@
 <?php
 /*
- * uniple JPYC Checkout — admin config dispatcher for EC-CUBE 2.x
+ * uniple Checkout — admin config dispatcher for EC-CUBE 2.x
  *
  * /admin/load_plugin_config.php?plugin_id=N からこのファイルが require_once される。
  * LC_Page_Admin 系 page class を直接定義 + run する形式 (= EC-CUBE 2 系標準)。
@@ -25,7 +25,7 @@ class LC_Page_Plugin_UnipleJpyc_Config extends LC_Page_Admin_Ex
         $this->tpl_subno = 'plugin';
         $this->tpl_mainno = 'ownersstore';
         $this->tpl_subnavi = 'ownersstore/subnavi.tpl';
-        $this->tpl_subtitle = 'uniple JPYC Checkout 設定';
+        $this->tpl_subtitle = 'uniple Checkout 設定';
     }
 
     public function process()

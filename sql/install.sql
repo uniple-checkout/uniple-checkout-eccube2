@@ -1,4 +1,4 @@
--- uniple JPYC Checkout for EC-CUBE 2.x
+-- uniple Checkout for EC-CUBE 2.x
 -- 4 系 plugin の Doctrine migration (Version20260501100000) を MariaDB 互換 SQL で書き直し。
 -- table prefix `plg_uniple_jpyc_` で 4 系と同じ命名 (= 4 系から知識流用しやすい)。
 

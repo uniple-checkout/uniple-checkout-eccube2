@@ -1,6 +1,6 @@
 <?php
 /*
- * uniple JPYC Checkout — webhook receiver for EC-CUBE 2.x
+ * uniple Checkout — webhook receiver for EC-CUBE 2.x
  *
  * uniple checkout.session.* webhook を受信し、署名検証 + 冪等処理 +
  * IntentMapping 更新 + 注文 status 更新 (= ORDER_PRE_END / ORDER_CANCEL) を行う。

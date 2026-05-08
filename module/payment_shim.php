@@ -1,6 +1,6 @@
 <?php
 /*
- * uniple JPYC Checkout — payment module shim for EC-CUBE 2.x
+ * uniple Checkout — payment module shim for EC-CUBE 2.x
  *
  * EC-CUBE 2 系の load_payment_module.php は dtb_payment.module_path を
  * MODULE_REALDIR (= /data/module/) 配下に強制する仕様 (= LC_Page_Shopping_LoadPaymentModule)。

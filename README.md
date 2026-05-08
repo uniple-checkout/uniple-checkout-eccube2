@@ -1,4 +1,4 @@
-# uniple JPYC Checkout for EC-CUBE 2.x (β)
+# uniple Checkout for EC-CUBE 2.x (β)
 
 EC-CUBE 2 系加盟店向け、uniple checkout 決済プラグイン。
 
@@ -39,7 +39,7 @@ cp -R /var/www/eccube2/data/downloads/plugin/UnipleJpyc/html_plugin/UnipleJpyc/*
 # 3. EC-CUBE 管理画面 → オーナーズストア > プラグイン管理 から
 #    UnipleJpyc を install + 有効化 (= UnipleJpyc::install() が sql/install.sql 実行)
 
-# 4. 管理画面 → プラグイン設定 → uniple JPYC Checkout で
+# 4. 管理画面 → プラグイン設定 → uniple Checkout で
 #    apiKey + webhookSecret + merchantLabel + apiBaseUrl + mode を入力
 ```
 

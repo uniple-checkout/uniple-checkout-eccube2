@@ -1,6 +1,6 @@
 <?php
 /*
- * uniple JPYC Checkout for EC-CUBE 2.x — plugin_info
+ * uniple Checkout for EC-CUBE 2.x — plugin_info
  *
  * 日本円ステーブルコイン JPYC (= 資金決済法第 2 条第 5 項に基づく電子決済手段、
  * JPYC 株式会社発行 / 関東財務局長第 00099 号 資金移動業者) による決済を、
@@ -15,7 +15,7 @@ class plugin_info
     public static $PLUGIN_CODE          = 'UnipleJpyc';
 
     /** プラグイン名称 */
-    public static $PLUGIN_NAME          = 'uniple JPYC Checkout';
+    public static $PLUGIN_NAME          = 'uniple Checkout';
 
     /** プラグインバージョン (= 4 系と独立な version 番号) */
     public static $PLUGIN_VERSION       = '0.1.0';
