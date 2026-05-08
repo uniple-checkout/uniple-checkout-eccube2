@@ -174,6 +174,34 @@ EC-CUBE 標準の error 画面 + 加盟店側の microcopy で「数分後に再
 の重複 POST は同 session を返す) があるため、 同 key で safe に retry 可能。
 ただし plugin MVP scope には含めない。
 
+## 責任分界
+
+本 plugin は **uniple 本体 (= 別法人が運営する PSP インフラ) の Merchant API
+を呼び出すクライアント**として動作します。 plugin が独自に決済処理を行うわけ
+ではなく、 決済 / 円転 / KYC / on-chain Tx 等は uniple 本体側で完結します。
+
+障害時 SLA / status 通知は uniple 本体 status page (= https://uniple.io) を
+参照、 plugin は独自 SLA 保証しません。
+
+### 加盟店 secret の管理境界
+
+- **発行**: uniple 本体 `/admin/merchants/` の加盟店設定画面で self-serve 発行
+- **保管**: 加盟店側で plugin の設定画面 (= `plg_uniple_jpyc_config` table) に
+  投入
+
+> ⚠️ **重要: 平文 secret は発行直後の section でのみ表示されます**
+>
+> uniple admin `/admin/merchants/` で API key / Webhook secret を発行すると、
+> **画面下部の section に平文で 1 度だけ表示**されます。 **必ず発行直後にコピー**
+> し、 安全な場所に保管してください。 後から再表示することはできません。
+
 ## ライセンス
 
 GPL (= EC-CUBE 2.x 標準ライセンス互換)
+
+---
+
+<div align="center">
+  <strong>© uniple inc.</strong><br>
+  <small>JPYC及びJPYCロゴは、JPYC株式会社の登録商標です。</small>
+</div>

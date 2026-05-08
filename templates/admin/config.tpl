@@ -101,6 +101,12 @@
         <button type="submit" class="btn btn-primary">登録</button>
     </p>
 
+    {* uniple 本体側 footer 統一 (= BUILD jHDKVJ-U2CTLw9MhBKrw_、 全 page 整合) *}
+    <div style="text-align:center; margin-top:24px; line-height:1.6;">
+        <div style="font-size:0.85rem; font-weight:600; color:#374151;">© uniple inc.</div>
+        <div style="font-size:0.7rem; color:#6b7280;">JPYC及びJPYCロゴは、JPYC株式会社の登録商標です。</div>
+    </div>
+
 </div>
 
 </form>
