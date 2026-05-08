@@ -1,20 +1,24 @@
 #!/usr/bin/env bash
-# uniple JPYC Checkout for EC-CUBE 2.x — 公式ストア提出用 zip パッケージング
+# uniple JPYC Checkout for EC-CUBE 2.x — 公式ストア提出用 tar.gz パッケージング
 #
 # usage:
 #   bin/package.sh [output_dir]
 #
 # 動作:
-#   1. plugin リポジトリ root で git ls-files が返す tracked file 全部を zip に詰める
+#   1. plugin リポジトリ root で git ls-files が返す tracked file 全部を tar.gz に詰める
 #      (= .git / 開発用ファイル等は git 管理外なので自動除外)
-#   2. EC-CUBE 2 系の plugin install zip 形式: plugin_info.php が zip root に
+#   2. EC-CUBE 2 系の plugin install tar.gz 形式: plugin_info.php が tar.gz root に
 #      ある形 (= 4 系と異なり Code/ サブディレクトリは無し)
-#   3. zip ファイル名は <Code>-<version>.tar.gz (= EC-CUBE 2 公式は tar.gz が
-#      標準だが zip も受け付ける)、 ここでは zip で出力
+#   3. tar.gz ファイル名は <Code>-<version>.tar.gz
 #   4. 出力先: 第 1 引数があればそこ、 なければ build/ 配下
+#   5. macOS の AppleDouble (._*) を除外するため COPYFILE_DISABLE=1 を設定
+#
+# EC-CUBE 公式ストア申請形式:
+#   - 形式: tar.gz (= zip 不可、 公式 FAQ 明示)
 #
 # 公式ストア提出時の確認チェックリスト:
 #   - plugin_info.php の PLUGIN_CODE / PLUGIN_NAME / PLUGIN_VERSION 整合
+#   - PLUGIN_VERSION を bump 済 (= 既存提出済バージョンより上)
 #   - README.md の動作要件 (= EC-CUBE バージョン / PHP / DB) 最新
 #   - presskit 必須 3 行免責表記が plugin 設定画面 + README に存在
 set -euo pipefail
@@ -42,66 +46,56 @@ fi
 OUTPUT_DIR="${1:-build}"
 mkdir -p "${OUTPUT_DIR}"
 
-ZIP_NAME="${CODE}-${VERSION}.zip"
-ZIP_PATH="${OUTPUT_DIR}/${ZIP_NAME}"
+ARCHIVE_NAME="${CODE}-${VERSION}.tar.gz"
+ARCHIVE_PATH="${OUTPUT_DIR}/${ARCHIVE_NAME}"
 
-[[ -f "${ZIP_PATH}" ]] && rm -f "${ZIP_PATH}"
+[[ -f "${ARCHIVE_PATH}" ]] && rm -f "${ARCHIVE_PATH}"
 
-TRACKED_FILES=$(git ls-files)
-if [[ -z "${TRACKED_FILES}" ]]; then
+# git ls-files から tracked file を staging に複製 (= 2 系は archive root 直下)
+TMP_STAGING=$(mktemp -d)
+trap 'rm -rf "${TMP_STAGING}"' EXIT
+
+COUNT=0
+while IFS= read -r file; do
+    [[ -z "${file}" ]] && continue
+    [[ ! -f "${file}" ]] && continue
+    mkdir -p "${TMP_STAGING}/$(dirname "${file}")"
+    cp "${file}" "${TMP_STAGING}/${file}"
+    COUNT=$((COUNT + 1))
+done < <(git ls-files)
+
+if [[ ${COUNT} -eq 0 ]]; then
     echo "ERROR: git ls-files が空、 plugin リポジトリ root で実行してください" >&2
     exit 1
 fi
 
-# PHP ZipArchive で zip 作成、 EC-CUBE 2 系は zip root に直接 plugin file を配置
-ABS_ZIP_PATH="${PLUGIN_DIR}/${ZIP_PATH}"
-export ABS_ZIP_PATH TRACKED_FILES
-php <<'PHPEOF'
-<?php
-$zipPath = getenv('ABS_ZIP_PATH');
-$files   = explode("\n", trim(getenv('TRACKED_FILES')));
+# tar.gz 作成 (= COPYFILE_DISABLE で macOS AppleDouble 除外、 staging から)
+# EC-CUBE 2 系は archive root に直接 plugin file を配置 (= Code/ サブディレクトリ無し)
+ABS_ARCHIVE_PATH="${PLUGIN_DIR}/${ARCHIVE_PATH}"
+(
+    cd "${TMP_STAGING}" && \
+    COPYFILE_DISABLE=1 tar \
+        --exclude '.git' \
+        --exclude '.DS_Store' \
+        --exclude '._*' \
+        -czf "${ABS_ARCHIVE_PATH}" \
+        .
+)
 
-if (!class_exists('ZipArchive')) {
-    fwrite(STDERR, "ERROR: PHP ZipArchive 拡張が無効、 php-zip パッケージをインストールしてください\n");
-    exit(1);
-}
-
-$zip = new ZipArchive();
-if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
-    fwrite(STDERR, "ERROR: zip open 失敗: $zipPath\n");
-    exit(1);
-}
-
-$count = 0;
-foreach ($files as $file) {
-    if ($file === '' || !is_file($file)) continue;
-    // EC-CUBE 2 系: zip root に直接 plugin file を配置 (= 4 系のような Code/ なし)
-    if (!$zip->addFile($file, $file)) {
-        fwrite(STDERR, "WARN: add 失敗: $file\n");
-        continue;
-    }
-    $count++;
-}
-
-if (!$zip->close()) {
-    fwrite(STDERR, "ERROR: zip close 失敗\n");
-    exit(1);
-}
-echo "added: $count files\n";
-PHPEOF
-
-if [[ ! -f "${ZIP_PATH}" ]]; then
-    echo "ERROR: zip 生成失敗" >&2
+if [[ ! -f "${ARCHIVE_PATH}" ]]; then
+    echo "ERROR: tar.gz 生成失敗" >&2
     exit 1
 fi
 
-ZIP_SIZE=$(du -h "${ZIP_PATH}" | awk '{print $1}')
+ARCHIVE_SIZE=$(du -h "${ARCHIVE_PATH}" | awk '{print $1}')
 
-echo "✅ パッケージ作成完了: ${ZIP_PATH}"
-echo "   zip 内構造: <plugin files> (= 2 系は zip root 直下、 Code/ なし)"
-echo "   ファイルサイズ: ${ZIP_SIZE}"
+echo "✅ パッケージ作成完了: ${ARCHIVE_PATH}"
+echo "   archive 内構造: <plugin files> (= 2 系は archive root 直下、 Code/ なし)"
+echo "   ファイル数: ${COUNT}"
+echo "   ファイルサイズ: ${ARCHIVE_SIZE}"
 echo
 echo "公式ストア提出時:"
-echo "  - EC-CUBE 管理画面 > オーナーズストア > プラグイン管理 > プラグインアップロード"
+echo "  - EC-CUBE.net パートナーマイページ > プラグイン申請 > 新規登録"
+echo "  - 形式: tar.gz (= zip 不可)"
 echo "  - plugin_info.php の PLUGIN_VERSION (= ${VERSION}) を提出ごとに bump"
 echo "  - README + 実装メモ section の最新版が含まれていること確認"
