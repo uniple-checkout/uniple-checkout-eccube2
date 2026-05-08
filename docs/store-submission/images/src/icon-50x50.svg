@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 50 50">
+  <!-- uniple JPYC Checkout - 公式ストア提出用 50x50 ミニアイコン -->
+  <!-- background: JPYC Blue #16449A (公式 presskit 準拠) -->
+  <circle cx="25" cy="25" r="24" fill="#16449A"/>
+  <!-- 中央に白い U 字 (= uniple logomark の単純化) -->
+  <path d="M 16 14 L 16 27 Q 16 34 25 34 Q 34 34 34 27 L 34 14"
+        stroke="#FFFFFF" stroke-width="4" fill="none"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

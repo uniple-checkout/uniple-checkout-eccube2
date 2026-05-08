@@ -1,5 +1,16 @@
-# 公式ストア提出用 zip パッケージ出力先 (= bin/package.sh)
+# 公式ストア提出用 tar.gz パッケージ出力先 (= bin/package.sh)
 build/
+
+# 公式ストア提出用 SECRET sandbox info (= 審査担当者にのみ開示、 公開禁止)
+docs/store-submission/SECRET-sandbox-info.md
+docs/store-submission/SECRET-*.md
+!docs/store-submission/SECRET-*.md.template
+
+# 公式ストア提出用 画像 PNG (= bin/build-images.sh で生成)
+docs/store-submission/images/*.png
+
+# 公式ストア提出用 マニュアル PDF (= bin/build-manual.sh で生成)
+docs/store-submission/manual.pdf
 
 # vendor / dev artifacts
 vendor/
