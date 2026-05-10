@@ -86,6 +86,38 @@ Phase 2 実施時 (= 2026-08-08 以降、 uniple changelog で告知) は plugin
 変更を伴うため、 uniple 運営側で契約合意確認 + admin で変更操作 +
 加盟店通知 のフローを経由します。
 
+## 6.5 LINE 利用料の課金タイミング (= D user 経営判断)
+
+uniple checkout for LINE は加盟店契約と紐づく **有料機能**ですが、 経路選択
+release (= step 2) と billing system 連携は段階分離されています:
+
+- **無料期間** = step 2 release (= 経路選択先行 release) ~ billing system
+  release 間は LINE 経路を使用しても **加盟店への料金請求は発生しません**
+- **記録は継続** = 利用期間は uniple AuditLog に記録され、 後日方針変更時に
+  遡って参照可能 (= 現状方針は無料扱い、 後追い請求への変更可能性は理論上
+  保持)
+- **billing release 後** = 通常の月額 / 従量課金プランに移行 (= 詳細は
+  uniple サポートへ確認)
+
+= 早期普及優先の経営判断、 billing 構築までの暫定措置。 加盟店通知は uniple
+admin から個別送信されます。
+
+## 6.6 緊急停止 (= kill-switch) について
+
+経路選択は MerchantSite.checkoutMode の snapshot で session 単位に固定されます
+が、 緊急時 (= 加盟店契約取消 / 問題発覚時) には uniple 本体側で **強制
+`wc_only` への倒し込み** (= MerchantSite.lineUsageDisabledAt を set)
+が可能です。
+
+- 発動権限 = uniple engineering on-call + 経営層通知 (= AuditLog で D user
+  即時可視化)
+- 影響 = 設定後の新規 session は強制 `wc_only` (= 既存 LINE 経路 session
+  は完走まで継続、 新規のみ切替)
+- 加盟店通知 = 発動時に email + admin dashboard で告知
+
+加盟店側で「経路を強制的に WC 直に倒したい」 等の緊急要望がある場合は
+uniple サポート (= support@uniple.io) までご連絡ください。
+
 ---
 
 ## 7. 関連 docs / 公式情報
