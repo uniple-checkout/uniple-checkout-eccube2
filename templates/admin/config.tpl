@@ -30,6 +30,14 @@
         ※ uniple はノンカストディ型決済のため、加盟店 → 購入者の直接送金以外の返金経路はありません。
     </div>
 
+    <!-- ℹ️ 経路選択 SSOT 案内 -->
+    <div class="message" style="border:1px solid #d0e3ff; background:#eef5ff; padding:12px; margin:12px 0;">
+        <strong>ℹ️ 経路選択 (= LINE 経由 / WC 直) について</strong><br>
+        経路選択は <strong>uniple admin で一元管理</strong>されています (= MerchantSite.checkoutMode)。
+        本 plugin 設定画面では経路設定は提供していません。 経路変更を希望される場合は uniple サポート (= support@uniple.io) までご連絡ください。<br>
+        詳細: docs/migration-notes.md
+    </div>
+
     <!--{if !empty($arrInfo)}-->
         <!--{foreach from=$arrInfo item=msg}-->
             <p class="message" style="color:green;"><!--{$msg|escape}--></p>

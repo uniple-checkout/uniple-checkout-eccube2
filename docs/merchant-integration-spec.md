@@ -47,6 +47,12 @@ for LINE** を組み込むための統合仕様書。 plugin docs を入口、 M
 
 ## 1.2 経路選択
 
+> ℹ️ **経路選択 (= LINE 経由 / WC 直 / 両方) の SSOT は uniple 本体側
+> (= MerchantSite.checkoutMode) に一元管理**されています。 加盟店契約と
+> 紐づく設定 (= LINE 利用料の請求対象) のため、 plugin 側で経路指定する
+> 必要はありません。 経路変更は uniple サポート (= support@uniple.io)
+> まで。 詳細は [移行メモ (= Phase 1/2 段階移行)](#移行メモ) 参照。
+
 ### uniple checkout (= ウォレット直結)
 
 ```
@@ -417,10 +423,20 @@ $session = uniple_create_session(
 session_start();
 $_SESSION['uniple_pending_order_id'] = $orderId;
 
-// uniple checkout に redirect (= ?wc=1 = WC 直経路)
+// uniple checkout に redirect
 header('Location: ' . $session['checkoutUrl'] . '?wc=1', true, 302);
 exit;
 ```
+
+> ℹ️ **`?wc=1` query について (= compatibility note)**
+>
+> 上記コードでは互換維持のため `?wc=1` query を付与していますが、
+> Phase 1 release (= 2026-05-10) から少なくとも 90 日の移行期間中の
+> **legacy 互換措置**です。 経路選択 (= LINE 経由 / WC 直 / 両方) の SSOT
+> は uniple 本体側 (= MerchantSite.checkoutMode) で一元管理され、 加盟店
+> 側で経路指定する必要はありません。 Phase 2 実施 (= 2026-08-08 以降、
+> uniple changelog で告知) 後は plain `$session['checkoutUrl']` への redirect
+> に変更されます。 詳細は [移行メモ](#移行メモ) 参照。
 
 ### Step 3: webhook receiver (= HMAC-SHA256 検証 + 冪等性確保)
 
@@ -576,6 +592,13 @@ exit;
 
 ## 2.7 LINE 経路統合 (= uniple checkout for LINE)
 
+> ℹ️ **LINE 経路の有効化は加盟店契約時に uniple admin で設定**されます。
+> uniple checkout for LINE は LINE 利用料を伴う有料機能のため、 経路選択
+> (= `wc_only` / `line_only` / `both`) は MerchantSite.checkoutMode で SSOT
+> 1 元管理されます。 加盟店から経路変更を希望される場合は uniple サポート
+> (= support@uniple.io) までご連絡ください (= MVP では加盟店 self-serve は
+> 未対応)。
+
 ### Phase 1 (= 現在 live、 MVP)
 
 uniple 共通 LINE OA (= 1 つの uniple 公式アカウント) を全加盟店共通で使用。
@@ -702,6 +725,17 @@ wallet 作成**を案内する。
 - uniple Merchant API spec: https://uniple.io/docs/merchant-api
 - 加盟店サポート窓口: support@uniple.io
 - 公式 Web サイト: https://uniple.io
+
+## 移行メモ
+
+経路選択 SSOT 化の Phase 1/2 段階移行については別 docs に集約しています:
+[migration-notes.md](migration-notes.md) を参照ください。
+
+主要トピック:
+- Phase 1 (= 2026-05-10 ~) = docs / 案内文 SSOT 化、 内部 `?wc=1` は legacy 互換で残置
+- Phase 2 (= 2026-08-08 以降、 最早) = `?wc=1` 完全廃止
+- `?wc=1` query 自動付与は Phase 1 release から少なくとも 90 日の互換措置
+- 加盟店側の追加対応は Phase 1/2 とも不要
 
 ---
 

@@ -201,6 +201,18 @@ EC-CUBE 標準の error 画面 + 加盟店側の microcopy で「数分後に再
 > **画面下部の section に平文で 1 度だけ表示**されます。 **必ず発行直後にコピー**
 > し、 安全な場所に保管してください。 後から再表示することはできません。
 
+## 移行メモ — `?wc=1` query の自動付与について (= compatibility note)
+
+互換維持のため、 plugin は **Phase 1 release (= 2026-05-10) から少なくとも
+90 日** の移行期間中に限り `?wc=1` query を自動付与しています。
+**加盟店側の追加設定は不要**です。 削除時期 (= Phase 2 実施日) は uniple
+公式 changelog でお知らせします。
+
+経路選択 (= LINE 経由 / WC 直 / 両方) の SSOT は uniple 本体側
+(= MerchantSite.checkoutMode) に一元管理されており、 plugin 側で経路指定する
+必要はありません。 詳細は [docs/migration-notes.md](docs/migration-notes.md)
+を参照ください。
+
 ## ライセンス
 
 GPL (= EC-CUBE 2.x 標準ライセンス互換)
