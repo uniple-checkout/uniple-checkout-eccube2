@@ -5,8 +5,8 @@
  * 法令準拠 (= JPYC は電子決済手段) + 返金未対応 + presskit 必須 3 行免責 を必須表示。
  *}
 
-<form name="form1" id="form1" method="post" action="?" autocomplete="off">
-<input type="hidden" name="mode" value="save" />
+<form name="form1" id="form1" method="post" action="<!--{$smarty.server.REQUEST_URI|escape}-->" autocomplete="off">
+<input type="hidden" name="form_action" value="save" />
 <input type="hidden" name="transactionid" value="<!--{$arrForm.transactionid|escape}-->" />
 
 <div class="contents-main">

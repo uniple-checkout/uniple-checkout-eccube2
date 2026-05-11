@@ -40,11 +40,11 @@ class LC_Page_Plugin_UnipleJpyc_Config extends LC_Page_Admin_Ex
         $objFormParam = new SC_FormParam_Ex();
         $this->initParam($objFormParam);
 
-        $mode = isset($_POST['mode']) ? $_POST['mode'] : '';
+        $formAction = isset($_POST['form_action']) ? $_POST['form_action'] : '';
 
-        if ($mode === 'save') {
+        if ($formAction === 'save') {
             // CSRF: LC_Page_Admin の transactionid 機構
-            $this->doValidToken();
+            $this->doValidUnipleToken();
 
             $objFormParam->setParam($_POST);
             $arrErr = $objFormParam->checkError();
@@ -61,12 +61,16 @@ class LC_Page_Plugin_UnipleJpyc_Config extends LC_Page_Admin_Ex
                 ), 'id = ?', array(1));
 
                 $this->arrInfo[] = '保存しました。';
-                // PRG パターン: 同 URL に redirect
-                SC_Response_Ex::reload();
-                exit;
+                // PRG パターンの reload は cloudflared tunnel 経由で空 response になる場合があるため
+                // 保存後 DB から再読込して直接 render する
+                $row = $objQuery->getRow('*', 'plg_uniple_jpyc_config', 'id = ?', array(1));
+                if ($row) {
+                    $this->arrForm = $row;
+                }
+            } else {
+                $this->arrErr = $arrErr;
+                $this->arrForm = $arrParams;
             }
-            $this->arrErr = $arrErr;
-            $this->arrForm = $arrParams;
         } else {
             // GET 時は DB から読込
             $row = $objQuery->getRow('*', 'plg_uniple_jpyc_config', 'id = ?', array(1));
@@ -89,7 +93,7 @@ class LC_Page_Plugin_UnipleJpyc_Config extends LC_Page_Admin_Ex
         $this->cancelUrl  = rtrim(HTTPS_URL, '/') . '/plugin/UnipleJpyc/cancel.php';
 
         // CSRF token
-        $this->setTokenTo($this->arrForm);
+        $this->setUnipleTokenTo($this->arrForm);
     }
 
     private function initParam(SC_FormParam_Ex &$objFormParam)
@@ -104,12 +108,12 @@ class LC_Page_Plugin_UnipleJpyc_Config extends LC_Page_Admin_Ex
     /**
      * CSRF token helper (= LC_Page_Admin の transactionid 機構を借りる)
      */
-    private function setTokenTo(&$arrForm)
+    public function setUnipleTokenTo(&$arrForm)
     {
         $arrForm['transactionid'] = SC_Helper_Session_Ex::getToken();
     }
 
-    private function doValidToken()
+    public function doValidUnipleToken()
     {
         if (!SC_Helper_Session_Ex::isValidToken(true)) {
             SC_Utils_Ex::sfDispSiteError(INVALID_MOVE_ERRORR, '', true);
