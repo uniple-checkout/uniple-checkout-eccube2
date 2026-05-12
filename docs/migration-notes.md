@@ -119,6 +119,28 @@ admin から個別送信されます。
 加盟店側で「経路を強制的に WC 直に倒したい」 等の緊急要望がある場合は
 uniple サポート (= support@uniple.io) までご連絡ください。
 
+## 6.7 webhook 配信失敗時の last-line fallback (= 2026-05-13 追加)
+
+通常運用では uniple 本体からの **webhook 配信が正本**で、 plugin は受信した
+webhook でだけ注文を確定 (= mapping completed 化 + cart purge) します。 ただし
+webhook 配信が一時的に失敗 (= 加盟店 server 障害 / network 切断 / signature drift
+等) すると、 plugin 側は mapping pending のまま残り、 顧客が return URL 着地時に
+「決済処理中」 fallback 画面に倒れて cart も purge されない状態になり得ます。
+
+これに対する **last-line of defense** として、 plugin は return URL 着地時に
+`mapping.status === 'pending'` の場合、 uniple GET `/api/merchant/checkout/sessions/<id>`
+で **live status を直接確認**します:
+
+- uniple 側 `status === 'completed'` なら → plugin 側 mapping を completed 化 +
+  cart purge + サンクスページ着地 (= 通常完走と同 UX)
+- それ以外 (= pending / expired / failed / API error / timeout) なら → 従来の
+  pending 画面 fallback
+
+= webhook = 正本維持、 これは return URL 着地時の補助救済経路。 webhook が後追いで
+到着してもレース対策 (= `completed_at` は NULL 時のみ set) で冪等動作。
+
+加盟店側の追加設定は不要、 plugin update のみで自動有効化されます。
+
 ## 7. 関連 docs / 公式情報
 
 - **uniple 本体 docs**: `https://uniple.io/docs/merchant-api` (= API SSOT)
@@ -135,3 +157,4 @@ uniple サポート (= support@uniple.io) までご連絡ください。
 |---|---|
 | 2026-05-10 | Phase 1 release (= docs SSOT 化 + 案内文追加 + 移行メモ新設) |
 | 2026-05-12 | Phase 2 完了 (= plugin 内部 ?wc=1 付与削除、 r22 設計訂正、 D user e2e smoke 前倒し対応) |
+| 2026-05-13 | option C fallback 強化 (= return URL 着地時の uniple API live lookup last-line of defense、 webhook 配信失敗時の cart 残置自己修復) |

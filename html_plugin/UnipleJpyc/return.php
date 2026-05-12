@@ -29,10 +29,53 @@ $unipleSessionId = isset($_GET['cs']) ? (string) $_GET['cs'] : '';
 
 $mapping = null;
 if ($ecOrderId > 0) {
-    $mapping = $objQuery->getRow('id, order_id, status', 'plg_uniple_jpyc_intent_mapping', 'order_id = ?', array($ecOrderId));
+    // session_id field も取得 (= live lookup で使う、 r42 option C)
+    $mapping = $objQuery->getRow('id, order_id, status, session_id', 'plg_uniple_jpyc_intent_mapping', 'order_id = ?', array($ecOrderId));
 }
 if (!$mapping && $unipleSessionId !== '') {
-    $mapping = $objQuery->getRow('id, order_id, status', 'plg_uniple_jpyc_intent_mapping', 'session_id = ?', array($unipleSessionId));
+    $mapping = $objQuery->getRow('id, order_id, status, session_id', 'plg_uniple_jpyc_intent_mapping', 'session_id = ?', array($unipleSessionId));
+}
+
+// Last-line fallback (= 2026-05-13 option C、 r42 contract で uniple Codex GO):
+//   webhook 配信失敗 / 遅延で mapping = pending のまま return.php 着地した場合、
+//   uniple GET /api/merchant/checkout/sessions/<id> で live status 確認、
+//   uniple 側 status='completed' なら plugin 側 mapping も completed 化して
+//   既存 completed path に合流させる (= cart purge + サンクスページ)。
+//
+//   webhook = 正本維持、 これは return URL 着地時の last-line of defense。
+//   network / 5xx / 401 / 404 は catch して従来 pending UI fallback。
+if ($mapping && $mapping['status'] === 'pending' && !empty($mapping['session_id'])) {
+    try {
+        require_once realpath(dirname(__FILE__) . '/../../../data/downloads/plugin/UnipleJpyc/lib/UnipleJpyc_Client.php');
+        $config = $objQuery->getRow('api_key, webhook_secret, merchant_label, api_base_url, mode', 'plg_uniple_jpyc_config', 'id = ?', array(1));
+        if ($config) {
+            $client = new UnipleJpyc_Client($config);
+            $liveSession = $client->getCheckoutSession((string) $mapping['session_id']);
+            $liveStatus = isset($liveSession['item']['status']) ? (string) $liveSession['item']['status'] : '';
+            $httpStatus = isset($liveSession['httpStatus']) ? (int) $liveSession['httpStatus'] : 0;
+            if ($liveStatus === 'completed') {
+                // race 対策 (= codex round 2 査読 minor note): completed_at は NULL 時のみ
+                // set (= webhook が live lookup 直後に到着しても上書きしない)
+                $objQuery->update('plg_uniple_jpyc_intent_mapping', array(
+                    'status'       => 'completed',
+                    'completed_at' => 'CURRENT_TIMESTAMP',
+                    'updated_at'   => 'CURRENT_TIMESTAMP',
+                ), 'id = ? AND completed_at IS NULL', array((int) $mapping['id']));
+                // status のみは無条件 update (= 既に completed なら no-op、 確実性優先)
+                $objQuery->update('plg_uniple_jpyc_intent_mapping', array(
+                    'status'     => 'completed',
+                    'updated_at' => 'CURRENT_TIMESTAMP',
+                ), 'id = ? AND status != ?', array((int) $mapping['id'], 'completed'));
+                $mapping['status'] = 'completed';
+                GC_Utils_Ex::gfPrintLog('[uniple-return] live_lookup_completed order_id=' . $mapping['order_id'] . ' sessionId=' . $mapping['session_id'] . ' httpStatus=' . $httpStatus, 'uniple_return.log');
+            } else {
+                GC_Utils_Ex::gfPrintLog('[uniple-return] live_lookup_not_completed order_id=' . $mapping['order_id'] . ' sessionId=' . $mapping['session_id'] . ' liveStatus=' . $liveStatus . ' httpStatus=' . $httpStatus, 'uniple_return.log');
+            }
+        }
+    } catch (Exception $e) {
+        GC_Utils_Ex::gfPrintLog('[uniple-return] live_lookup_failed order_id=' . $mapping['order_id'] . ' sessionId=' . $mapping['session_id'] . ' error=' . $e->getMessage(), 'uniple_return.log');
+        // 従来 pending fallback path に倒れる
+    }
 }
 
 // SC_Response_Ex で安全な redirect (= URL 直書き避ける、Codex 推奨)

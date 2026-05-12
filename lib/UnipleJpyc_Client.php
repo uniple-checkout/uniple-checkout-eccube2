@@ -110,6 +110,56 @@ class UnipleJpyc_Client
     }
 
     /**
+     * Hosted Checkout session を sessionId で取得 (= last-line fallback 用)。
+     *
+     * uniple Codex r42 (= 2026-05-13) で contract 確定。 webhook 配信失敗時の
+     * return.php 着地時に live lookup → status=completed なら mapping update +
+     * cart purge 実行する fallback path で使用。
+     *
+     * @param  string $sessionId  uniple session ID (= `ucs_...`)
+     * @return array {ok:bool, item?:array, error?:string, httpStatus:int}
+     * @throws Exception  network / 5xx error は throw、 caller 側で catch して pending UI fallback
+     */
+    public function getCheckoutSession($sessionId)
+    {
+        if (!is_string($sessionId) || $sessionId === '') {
+            throw new Exception('sessionId empty');
+        }
+        if ($this->config['api_key'] === '') {
+            throw new Exception('uniple_api_key_not_configured');
+        }
+        $baseUrl = rtrim($this->config['api_base_url'] !== '' ? $this->config['api_base_url'] : 'https://uniple.io', '/');
+        $endpoint = $baseUrl . '/api/merchant/checkout/sessions/' . rawurlencode($sessionId);
+
+        $ch = curl_init($endpoint);
+        curl_setopt_array($ch, array(
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => self::TIMEOUT_SECONDS,
+            CURLOPT_CONNECTTIMEOUT => self::CONNECT_TIMEOUT_SECONDS,
+            CURLOPT_HTTPHEADER     => array(
+                'Authorization: Bearer ' . $this->config['api_key'],
+                'Accept: application/json',
+            ),
+        ));
+        $raw = curl_exec($ch);
+        $httpStatus = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err = curl_error($ch);
+        curl_close($ch);
+
+        if ($raw === false) {
+            throw new Exception('uniple_session_lookup_network_error: ' . $err);
+        }
+
+        $data = json_decode((string) $raw, true);
+        if (!is_array($data)) {
+            throw new Exception('uniple_session_lookup_non_json: httpStatus=' . $httpStatus);
+        }
+        $data['httpStatus'] = $httpStatus;
+
+        return $data;
+    }
+
+    /**
      * Webhook X-Uniple-Signature 検証 (HMAC-SHA256, sha256=<hex>)。
      * 4 系から完全流用。
      */
