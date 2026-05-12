@@ -61,7 +61,7 @@ for LINE** を組み込むための統合仕様書。 plugin docs を入口、 M
 [加盟店 server: POST https://uniple.io/api/merchant/checkout/sessions]
   ↓ checkoutUrl 取得
   ↓
-[user を https://uniple.io/checkout/{sessionId}?wc=1 に redirect]
+[user を https://uniple.io/checkout/{sessionId} に redirect (= 経路振り分けは uniple SSR で完結)]
   ↓
 [uniple Hosted Checkout で wallet 接続 + 署名 + 完走]
   ↓
@@ -290,9 +290,10 @@ Shopify は「**Shopify Payment App**」 で App Store 提出が標準。 審査
 
 API spec を満たせば任意のカートシステムで実装可能。 必要な実装:
 1. Merchant API call (= `POST /api/merchant/checkout/sessions` で session 作成)
-2. user redirect (= `/checkout/{sessionId}?wc=1` または LINE 経路)
+2. user redirect (= 返却 `checkoutUrl` をそのまま redirect、 経路振り分けは uniple SSR で完結)
 3. webhook receiver (= HMAC-SHA256 検証 + 冪等処理 + order 完走化)
 4. successUrl / cancelUrl handler
+5. (推奨) option C fallback (= return URL 着地時 `GET /api/merchant/checkout/sessions/{id}` で live status 確認、 webhook 配信失敗時の last-line of defense)
 
 ### 言語別 reference 実装
 
@@ -405,7 +406,7 @@ function uniple_create_session(
 }
 ```
 
-### Step 2: user redirect (= /checkout/{sessionId}?wc=1)
+### Step 2: user redirect (= /checkout/{sessionId})
 
 ```php
 <?php
@@ -425,20 +426,19 @@ $session = uniple_create_session(
 session_start();
 $_SESSION['uniple_pending_order_id'] = $orderId;
 
-// uniple checkout に redirect
-header('Location: ' . $session['checkoutUrl'] . '?wc=1', true, 302);
+// uniple checkout に redirect (= 経路振り分けは uniple SSR で完結、 Phase 2 r22)
+header('Location: ' . $session['checkoutUrl'], true, 302);
 exit;
 ```
 
-> ℹ️ **`?wc=1` query について (= compatibility note)**
+> ℹ️ **経路選択について**
 >
-> 上記コードでは互換維持のため `?wc=1` query を付与していますが、
-> Phase 1 release (= 2026-05-10) から少なくとも 90 日の移行期間中の
-> **legacy 互換措置**です。 経路選択 (= LINE 経由 / WC 直 / 両方) の SSOT
-> は uniple 本体側 (= MerchantSite.checkoutMode) で一元管理され、 加盟店
-> 側で経路指定する必要はありません。 Phase 2 実施 (= 2026-08-08 以降、
-> uniple changelog で告知) 後は plain `$session['checkoutUrl']` への redirect
-> に変更されます。 詳細は [移行メモ](#移行メモ) 参照。
+> 経路選択 (= LINE 経由 / WC 直 / 両方) の SSOT は uniple 本体側
+> (= MerchantSite.checkoutMode) で一元管理されています。 加盟店側は `?wc=1`
+> 等の経路 query を付与せず、 返却 `checkoutUrl` をそのまま redirect してください。
+> 経路振り分けは uniple `/checkout/{sessionId}` SSR で完結します。
+> 詳細は [移行メモ](#移行メモ) 参照 (= Phase 2 で `?wc=1` 自動付与は plugin 側
+> から削除済、 2026-05-12)。
 
 ### Step 3: webhook receiver (= HMAC-SHA256 検証 + 冪等性確保)
 
