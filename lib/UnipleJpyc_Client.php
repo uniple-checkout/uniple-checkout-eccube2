@@ -14,8 +14,27 @@ class UnipleJpyc_Client
     const TIMEOUT_SECONDS = 5;
     const CONNECT_TIMEOUT_SECONDS = 3;
 
+    /**
+     * plugin version (= plugin_info.php と同期手動維持、 release 時 bump 必須)。
+     * 用途 = User-Agent header の telemetry / version tracing (= r47 採択)。
+     */
+    const PLUGIN_VERSION = '0.1.0';
+
     /** @var array {api_key, webhook_secret, merchant_label, api_base_url, mode} */
     private $config;
+
+    /**
+     * User-Agent header 構築 (= telemetry / version tracing 用、 r47 採択)。
+     *
+     * 形式: `uniple-plugin-eccube2/<plugin-version> (EC-CUBE/<eccube-version>)`
+     * 例: `uniple-plugin-eccube2/0.1.0 (EC-CUBE/2.17.2-p2)`
+     */
+    private function buildUserAgent()
+    {
+        $eccubeVersion = defined('ECCUBE_VERSION') ? ECCUBE_VERSION : 'unknown';
+
+        return 'uniple-plugin-eccube2/' . self::PLUGIN_VERSION . ' (EC-CUBE/' . $eccubeVersion . ')';
+    }
 
     public function __construct(array $config)
     {
@@ -73,6 +92,7 @@ class UnipleJpyc_Client
                 'Authorization: Bearer ' . $this->config['api_key'],
                 'Content-Type: application/json',
                 'Accept: application/json',
+                'User-Agent: ' . $this->buildUserAgent(),
             ),
         ));
         $raw = curl_exec($ch);
@@ -139,6 +159,7 @@ class UnipleJpyc_Client
             CURLOPT_HTTPHEADER     => array(
                 'Authorization: Bearer ' . $this->config['api_key'],
                 'Accept: application/json',
+                'User-Agent: ' . $this->buildUserAgent(),
             ),
         ));
         $raw = curl_exec($ch);
