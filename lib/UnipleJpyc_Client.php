@@ -3,7 +3,7 @@
  * uniple Merchant API client for EC-CUBE 2.x
  *
  * 4 系 plugin (Symfony 6.4 + Guzzle) から PHP 標準 curl + 同等仕様で移植。
- *   - sessions API POST + ?wc=1 自動付与
+ *   - sessions API POST (= Phase 2 r22 設計訂正で ?wc=1 付与削除済、 経路は uniple SSR)
  *   - HMAC-SHA256 署名検証 (= 4 系から完全流用)
  *   - 整数文字列金額正規化
  */
@@ -97,15 +97,12 @@ class UnipleJpyc_Client
             throw new Exception('uniple_session_missing_url');
         }
 
-        // GO_FOR_2API: WC 直経路は ?wc=1 を必ず付与
-        $checkoutUrlWc = (strpos($checkoutUrl, '?') !== false)
-            ? $checkoutUrl . '&wc=1'
-            : $checkoutUrl . '?wc=1';
+        // Phase 2 (= r22 設計訂正): `?wc=1` 付与削除。 経路振り分けは uniple SSR で完結。
 
         return array(
             'ok'          => true,
             'sessionId'   => $sessionId,
-            'checkoutUrl' => $checkoutUrlWc,
+            'checkoutUrl' => $checkoutUrl,
             'payId'       => isset($session['payId']) ? (string) $session['payId'] : '',
             'status'      => isset($session['status']) ? (string) $session['status'] : '',
             'expiresAt'   => isset($session['expiresAt']) ? (string) $session['expiresAt'] : '',

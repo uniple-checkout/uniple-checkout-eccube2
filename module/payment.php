@@ -11,7 +11,7 @@
  *   - dtb_order から amount + 注文情報引く
  *   - uniple session 作成 (= UnipleJpyc_Client::createSession)
  *   - IntentMapping (= plg_uniple_jpyc_intent_mapping) に order_id ↔ session_id 保存
- *   - uniple Hosted Checkout (?wc=1 自動付与済) へ header() redirect
+ *   - uniple Hosted Checkout (= Phase 2 r22 で ?wc=1 削除、 経路は uniple SSR) へ header() redirect
  *
  * このファイルは LC_Page_Shopping_LoadPaymentModule の context で実行されるので
  * $_SESSION / SC_Query / その他 EC-CUBE bootstrap がすべて利用可能。
@@ -104,6 +104,6 @@ $_SESSION['uniple_jpyc_pending_order_id'] = (int) $order_id;
 
 GC_Utils_Ex::gfPrintLog('[uniple-payment] session_created order_id=' . $order_id . ' sessionId=' . $session['sessionId'] . ' amount=' . $amount, 'uniple_payment.log');
 
-// uniple Hosted Checkout へ外部 redirect (= ?wc=1 は client 側で自動付与済)
+// uniple Hosted Checkout へ外部 redirect (= 経路振り分けは uniple SSR で完結、 Phase 2 r22)
 header('Location: ' . $session['checkoutUrl'], true, 302);
 exit;
