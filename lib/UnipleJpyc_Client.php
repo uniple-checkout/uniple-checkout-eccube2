@@ -13,6 +13,8 @@ class UnipleJpyc_Client
     const ENGINE_WC = 'wc';
     const TIMEOUT_SECONDS = 5;
     const CONNECT_TIMEOUT_SECONDS = 3;
+    const DEFAULT_API_BASE_URL = 'https://uniple.io';
+    const ALLOWED_UNIPLE_HOSTS = array('uniple.io', 'dev.uniple.io');
 
     /**
      * plugin version (= plugin_info.php と同期手動維持、 release 時 bump 必須)。
@@ -22,6 +24,149 @@ class UnipleJpyc_Client
 
     /** @var array {api_key, webhook_secret, merchant_label, api_base_url, mode} */
     private $config;
+
+    public static function getLogPath()
+    {
+        if (defined('DATA_REALDIR')) {
+            return DATA_REALDIR . 'logs/uniple_jpyc.log';
+        }
+
+        return 'uniple_jpyc.log';
+    }
+
+    public static function ensureLogDirectory($path = null)
+    {
+        $path = $path !== null ? (string) $path : self::getLogPath();
+        $dir = dirname($path);
+        if ($dir !== '' && !is_dir($dir)) {
+            @mkdir($dir, 0755, true);
+        }
+    }
+
+    public static function printLog($message)
+    {
+        $path = self::getLogPath();
+        self::ensureLogDirectory($path);
+        if (class_exists('GC_Utils_Ex')) {
+            GC_Utils_Ex::gfPrintLog((string) $message, $path, false);
+            return;
+        }
+
+        error_log((string) $message . "\n", 3, $path);
+    }
+
+    public static function maskToken($value, $prefixLength = 12)
+    {
+        $s = (string) $value;
+        if ($s === '') {
+            return '';
+        }
+        $prefixLength = (int) $prefixLength;
+        if ($prefixLength < 1) {
+            $prefixLength = 12;
+        }
+        if (strlen($s) <= $prefixLength) {
+            return substr($s, 0, min(4, strlen($s))) . '...';
+        }
+
+        return substr($s, 0, $prefixLength) . '...';
+    }
+
+    public static function normalizeApiBaseUrl($url)
+    {
+        $value = trim((string) $url);
+        if ($value === '') {
+            return self::DEFAULT_API_BASE_URL;
+        }
+        if (!self::isAllowedApiBaseUrl($value)) {
+            return rtrim($value, '/');
+        }
+
+        $parts = parse_url($value);
+        $host = strtolower(rtrim((string) $parts['host'], '.'));
+
+        return 'https://' . $host;
+    }
+
+    public static function isAllowedApiBaseUrl($url)
+    {
+        $value = trim((string) $url);
+        if ($value === '') {
+            return false;
+        }
+
+        $parts = parse_url($value);
+        if (!is_array($parts)) {
+            return false;
+        }
+
+        $scheme = strtolower((string) (isset($parts['scheme']) ? $parts['scheme'] : ''));
+        $host = strtolower(rtrim((string) (isset($parts['host']) ? $parts['host'] : ''), '.'));
+        $path = (string) (isset($parts['path']) ? $parts['path'] : '');
+        $port = isset($parts['port']) ? (int) $parts['port'] : 443;
+
+        if ($scheme !== 'https' || $host === '' || $port !== 443) {
+            return false;
+        }
+        if (isset($parts['user']) || isset($parts['pass']) || isset($parts['query']) || isset($parts['fragment'])) {
+            return false;
+        }
+        if ($path !== '' && $path !== '/') {
+            return false;
+        }
+
+        return self::isAllowedUnipleHost($host);
+    }
+
+    public static function isAllowedUnipleOrigin($url)
+    {
+        $value = trim((string) $url);
+        if ($value === '') {
+            return false;
+        }
+
+        $parts = parse_url($value);
+        if (!is_array($parts)) {
+            return false;
+        }
+
+        $scheme = strtolower((string) (isset($parts['scheme']) ? $parts['scheme'] : ''));
+        $host = strtolower(rtrim((string) (isset($parts['host']) ? $parts['host'] : ''), '.'));
+        $port = isset($parts['port']) ? (int) $parts['port'] : 443;
+
+        if ($scheme !== 'https' || $host === '' || $port !== 443) {
+            return false;
+        }
+        if (isset($parts['user']) || isset($parts['pass'])) {
+            return false;
+        }
+
+        return self::isAllowedUnipleHost($host);
+    }
+
+    public static function isAllowedUnipleHost($host)
+    {
+        $host = strtolower(rtrim(trim((string) $host, "[] \t\n\r\0\x0B"), '.'));
+        if ($host === '' || self::isBlockedIpOrLocalhost($host)) {
+            return false;
+        }
+
+        return in_array($host, self::ALLOWED_UNIPLE_HOSTS, true);
+    }
+
+    private static function isBlockedIpOrLocalhost($host)
+    {
+        if ($host === 'localhost' || substr($host, -10) === '.localhost') {
+            return true;
+        }
+
+        $ip = trim($host, '[]');
+        if (filter_var($ip, FILTER_VALIDATE_IP) === false) {
+            return false;
+        }
+
+        return filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false;
+    }
 
     /**
      * User-Agent header 構築 (= telemetry / version tracing 用、 r47 採択)。
@@ -42,7 +187,7 @@ class UnipleJpyc_Client
             'api_key'        => '',
             'webhook_secret' => '',
             'merchant_label' => '',
-            'api_base_url'   => 'https://uniple.io',
+            'api_base_url'   => self::DEFAULT_API_BASE_URL,
             'mode'           => 'live',
         ), $config);
     }
@@ -59,7 +204,10 @@ class UnipleJpyc_Client
         if ($this->config['api_key'] === '') {
             throw new Exception('uniple_api_key_not_configured');
         }
-        $baseUrl = rtrim($this->config['api_base_url'] !== '' ? $this->config['api_base_url'] : 'https://uniple.io', '/');
+        $baseUrl = self::normalizeApiBaseUrl($this->config['api_base_url']);
+        if (!self::isAllowedApiBaseUrl($baseUrl)) {
+            throw new Exception('uniple_api_base_url_not_allowed');
+        }
         $endpoint = $baseUrl . '/api/merchant/checkout/sessions';
 
         $amountInt = $this->toIntegerJpyc($params['amountJpyc']);
@@ -116,6 +264,9 @@ class UnipleJpyc_Client
         if ($sessionId === '' || $checkoutUrl === '') {
             throw new Exception('uniple_session_missing_url');
         }
+        if (!self::isAllowedUnipleOrigin($checkoutUrl)) {
+            throw new Exception('uniple_session_invalid_checkout_url');
+        }
 
         // Phase 2 (= r22 設計訂正): `?wc=1` 付与削除。 経路振り分けは uniple SSR で完結。
 
@@ -148,7 +299,10 @@ class UnipleJpyc_Client
         if ($this->config['api_key'] === '') {
             throw new Exception('uniple_api_key_not_configured');
         }
-        $baseUrl = rtrim($this->config['api_base_url'] !== '' ? $this->config['api_base_url'] : 'https://uniple.io', '/');
+        $baseUrl = self::normalizeApiBaseUrl($this->config['api_base_url']);
+        if (!self::isAllowedApiBaseUrl($baseUrl)) {
+            throw new Exception('uniple_api_base_url_not_allowed');
+        }
         $endpoint = $baseUrl . '/api/merchant/checkout/sessions/' . rawurlencode($sessionId);
 
         $ch = curl_init($endpoint);

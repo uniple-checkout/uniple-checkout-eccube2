@@ -5,8 +5,7 @@
 #   bin/package.sh [output_dir]
 #
 # 動作:
-#   1. plugin リポジトリ root で git ls-files が返す tracked file 全部を tar.gz に詰める
-#      (= .git / 開発用ファイル等は git 管理外なので自動除外)
+#   1. plugin リポジトリ root で git ls-files が返す tracked file から、内部資料を除外して tar.gz に詰める
 #   2. EC-CUBE 2 系の plugin install tar.gz 形式: plugin_info.php が tar.gz root に
 #      ある形 (= 4 系と異なり Code/ サブディレクトリは無し)
 #   3. tar.gz ファイル名は <Code>-<version>.tar.gz
@@ -55,10 +54,27 @@ ARCHIVE_PATH="${OUTPUT_DIR}/${ARCHIVE_NAME}"
 TMP_STAGING=$(mktemp -d)
 trap 'rm -rf "${TMP_STAGING}"' EXIT
 
+should_exclude_file() {
+    local file="$1"
+    case "${file}" in
+        .github|.github/*) return 0 ;;
+        .gitignore) return 0 ;;
+        docs/store-submission/contract-briefing.md) return 0 ;;
+        docs/store-submission/ops-d-user-checklist.md) return 0 ;;
+        docs/store-submission/outreach-form-template.md) return 0 ;;
+        docs/store-submission/screenshot-script.md) return 0 ;;
+        docs/store-submission/SECRET-*) return 0 ;;
+    esac
+    return 1
+}
+
 COUNT=0
 while IFS= read -r file; do
     [[ -z "${file}" ]] && continue
     [[ ! -f "${file}" ]] && continue
+    if should_exclude_file "${file}"; then
+        continue
+    fi
     mkdir -p "${TMP_STAGING}/$(dirname "${file}")"
     cp "${file}" "${TMP_STAGING}/${file}"
     COUNT=$((COUNT + 1))
@@ -71,7 +87,11 @@ fi
 
 # tar.gz 作成 (= COPYFILE_DISABLE で macOS AppleDouble 除外、 staging から)
 # EC-CUBE 2 系は archive root に直接 plugin file を配置 (= Code/ サブディレクトリ無し)
-ABS_ARCHIVE_PATH="${PLUGIN_DIR}/${ARCHIVE_PATH}"
+if [[ "${ARCHIVE_PATH}" = /* ]]; then
+    ABS_ARCHIVE_PATH="${ARCHIVE_PATH}"
+else
+    ABS_ARCHIVE_PATH="${PLUGIN_DIR}/${ARCHIVE_PATH}"
+fi
 (
     cd "${TMP_STAGING}" && \
     COPYFILE_DISABLE=1 tar \

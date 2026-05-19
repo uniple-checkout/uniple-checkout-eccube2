@@ -24,6 +24,8 @@ class UnipleJpyc extends SC_Plugin_Base
      */
     public static function install($arrPlugin, $objPluginInstaller = null)
     {
+        self::ensureLogDirectory();
+
         $sqlPath = realpath(dirname(__FILE__) . '/sql/install.sql');
         if ($sqlPath && file_exists($sqlPath)) {
             $objQuery = SC_Query_Ex::getSingletonInstance();
@@ -59,6 +61,7 @@ class UnipleJpyc extends SC_Plugin_Base
     public static function enable($arrPlugin, $objPluginInstaller = null)
     {
         $objQuery = SC_Query_Ex::getSingletonInstance();
+        self::ensureLogDirectory();
 
         // Config singleton
         $count = (int) $objQuery->count('plg_uniple_jpyc_config', 'id = ?', array(1));
@@ -172,5 +175,17 @@ class UnipleJpyc extends SC_Plugin_Base
         // フックポイント登録は Phase 2 で実装 (= LC_Page_Shopping_Payment hook、
         // admin 設定画面 hook、注文一覧 hook 等)。
         // 現段階は plugin install + 設定 table 作成のみ動作確認可能。
+    }
+
+    private static function ensureLogDirectory()
+    {
+        if (!defined('DATA_REALDIR')) {
+            return;
+        }
+
+        $logDir = DATA_REALDIR . 'logs';
+        if (!is_dir($logDir)) {
+            @mkdir($logDir, 0755, true);
+        }
     }
 }

@@ -26,7 +26,7 @@ $objQuery = SC_Query_Ex::getSingletonInstance();
 // $_SESSION['order_id'] か SC_Helper_Purchase 経由で取得する必要あり。
 $order_id = isset($_SESSION['order_id']) ? (int) $_SESSION['order_id'] : 0;
 if ($order_id === 0) {
-    GC_Utils_Ex::gfPrintLog('[uniple-payment] no order_id in session', 'uniple_payment.log');
+    UnipleJpyc_Client::printLog('[uniple-payment] no order_id in session');
     SC_Utils_Ex::sfDispSiteError(PAGE_ERROR, '', true);
     return;
 }
@@ -34,7 +34,7 @@ if ($order_id === 0) {
 // 注文情報取得
 $arrOrder = $objQuery->getRow('order_id, payment_total, order_name01, order_name02', 'dtb_order', 'order_id = ?', array($order_id));
 if (!$arrOrder) {
-    GC_Utils_Ex::gfPrintLog('[uniple-payment] order_not_found order_id=' . $order_id, 'uniple_payment.log');
+    UnipleJpyc_Client::printLog('[uniple-payment] order_not_found order_id=' . $order_id);
     SC_Utils_Ex::sfDispSiteError(PAGE_ERROR, '', true);
     return;
 }
@@ -50,7 +50,7 @@ if ($arrFirstItem && !empty($arrFirstItem['product_name'])) {
 // Config 読込
 $arrConfig = $objQuery->getRow('*', 'plg_uniple_jpyc_config', 'id = ?', array(1));
 if (!$arrConfig || empty($arrConfig['api_key'])) {
-    GC_Utils_Ex::gfPrintLog('[uniple-payment] config not initialized or api_key empty', 'uniple_payment.log');
+    UnipleJpyc_Client::printLog('[uniple-payment] config not initialized or api_key empty');
     SC_Utils_Ex::sfDispSiteError(FREE_ERROR_MSG, '', true, 'uniple JPYC 決済が利用できません。管理者にお問い合わせください。');
     return;
 }
@@ -83,7 +83,14 @@ try {
         'webhookUrl'      => $webhookUrl,
     ));
 } catch (Exception $e) {
-    GC_Utils_Ex::gfPrintLog('[uniple-payment] session_create_failed order_id=' . $order_id . ' error=' . $e->getMessage(), 'uniple_payment.log');
+    UnipleJpyc_Client::printLog('[uniple-payment] session_create_failed order_id=' . $order_id . ' error=' . $e->getMessage());
+    SC_Utils_Ex::sfDispSiteError(FREE_ERROR_MSG, '', true, 'uniple セッション作成に失敗しました。しばらくしてから再度お試しください。');
+    return;
+}
+
+$checkoutUrl = (string) $session['checkoutUrl'];
+if (!UnipleJpyc_Client::isAllowedUnipleOrigin($checkoutUrl)) {
+    UnipleJpyc_Client::printLog('[uniple-payment] invalid_checkout_url order_id=' . $order_id . ' host=' . (parse_url($checkoutUrl, PHP_URL_HOST) ?: ''));
     SC_Utils_Ex::sfDispSiteError(FREE_ERROR_MSG, '', true, 'uniple セッション作成に失敗しました。しばらくしてから再度お試しください。');
     return;
 }
@@ -101,9 +108,11 @@ $objQuery->insert('plg_uniple_jpyc_intent_mapping', array(
 // uniple の ?orderId append (= uniple 側 ID) で plugin の EC-CUBE 内部 ID が
 // URL から読めないため、 session 経路で渡す。
 $_SESSION['uniple_jpyc_pending_order_id'] = (int) $order_id;
+$_SESSION['uniple_jpyc_pending_session_id'] = (string) $session['sessionId'];
+$_SESSION['uniple_jpyc_pending_merchant_order_id'] = (string) $merchantOrderId;
 
-GC_Utils_Ex::gfPrintLog('[uniple-payment] session_created order_id=' . $order_id . ' sessionId=' . $session['sessionId'] . ' amount=' . $amount, 'uniple_payment.log');
+UnipleJpyc_Client::printLog('[uniple-payment] session_created order_id=' . $order_id . ' sessionId=' . UnipleJpyc_Client::maskToken($session['sessionId']) . ' amount=' . $amount . ' merchantOrderId=' . UnipleJpyc_Client::maskToken($merchantOrderId));
 
 // uniple Hosted Checkout へ外部 redirect (= 経路振り分けは uniple SSR で完結、 Phase 2 r22)
-header('Location: ' . $session['checkoutUrl'], true, 302);
+header('Location: ' . $checkoutUrl, true, 302);
 exit;

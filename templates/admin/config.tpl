@@ -48,17 +48,17 @@
         <tr>
             <th>Merchant API Key <span class="attention">*</span></th>
             <td>
-                <input type="text" name="api_key" value="<!--{$arrForm.api_key|escape}-->" size="60" maxlength="255" autocomplete="off" placeholder="ums_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" />
+                <input type="text" name="api_key" value="" size="60" maxlength="255" autocomplete="off" placeholder="空欄なら保存済みの値を維持" />
                 <!--{if !empty($arrErr.api_key)}--><p class="attention"><!--{$arrErr.api_key|escape}--></p><!--{/if}-->
-                <p class="info-msg">uniple ダッシュボードで発行された Merchant API Key (Bearer)。</p>
+                <p class="info-msg">uniple ダッシュボードで発行された Merchant API Key (Bearer)。<!--{if !empty($arrForm.api_key_masked)}--> 保存済み: <!--{$arrForm.api_key_masked|escape}--><!--{/if}--></p>
             </td>
         </tr>
         <tr>
             <th>Webhook Signing Secret <span class="attention">*</span></th>
             <td>
-                <input type="password" name="webhook_secret" value="<!--{$arrForm.webhook_secret|escape}-->" size="60" maxlength="255" autocomplete="new-password" />
+                <input type="password" name="webhook_secret" value="" size="60" maxlength="255" autocomplete="new-password" placeholder="空欄なら保存済みの値を維持" />
                 <!--{if !empty($arrErr.webhook_secret)}--><p class="attention"><!--{$arrErr.webhook_secret|escape}--></p><!--{/if}-->
-                <p class="info-msg">webhook (X-Uniple-Signature) の HMAC-SHA256 検証に使う共有 secret。</p>
+                <p class="info-msg">webhook (X-Uniple-Signature) の HMAC-SHA256 検証に使う共有 secret。<!--{if !empty($arrForm.webhook_secret_masked)}--> 保存済み: <!--{$arrForm.webhook_secret_masked|escape}--><!--{/if}--></p>
             </td>
         </tr>
         <tr>

@@ -43,7 +43,7 @@ if (!$configRow) {
 }
 $secret = (string) $configRow['webhook_secret'];
 if ($secret === '') {
-    GC_Utils_Ex::gfPrintLog('[uniple-webhook] webhook_secret_not_configured', 'webhook.log');
+    UnipleJpyc_Client::printLog('[uniple-webhook] webhook_secret_not_configured');
     http_response_code(503);
     echo json_encode(array('ok' => false, 'error' => 'webhook_secret_not_configured'));
     exit;
@@ -59,7 +59,7 @@ $client = new UnipleJpyc_Client(array(
 ));
 if (!$client->verifySignature($rawBody, $sigHeader)) {
     $sigPrefix = $sigHeader !== '' ? substr(preg_replace('/^sha256=/', '', $sigHeader), 0, 12) : '';
-    GC_Utils_Ex::gfPrintLog('[uniple-webhook] invalid_signature sigPrefix=' . $sigPrefix . ' bytes=' . strlen($rawBody), 'webhook.log');
+    UnipleJpyc_Client::printLog('[uniple-webhook] invalid_signature sigPrefix=' . $sigPrefix . ' bytes=' . strlen($rawBody));
     http_response_code(400);
     echo json_encode(array('ok' => false, 'error' => 'invalid_signature'));
     exit;
@@ -67,7 +67,7 @@ if (!$client->verifySignature($rawBody, $sigHeader)) {
 
 $payload = json_decode($rawBody, true);
 if (!is_array($payload)) {
-    GC_Utils_Ex::gfPrintLog('[uniple-webhook] invalid_json bytes=' . strlen($rawBody), 'webhook.log');
+    UnipleJpyc_Client::printLog('[uniple-webhook] invalid_json bytes=' . strlen($rawBody));
     http_response_code(400);
     echo json_encode(array('ok' => false, 'error' => 'invalid_json'));
     exit;
@@ -94,7 +94,7 @@ $sigPrefix = $sigHeader !== '' ? substr(preg_replace('/^sha256=/', '', $sigHeade
 // 冪等チェック
 $existing = $objQuery->getRow('id, processed_at', 'plg_uniple_jpyc_webhook_log', 'idempotency_key = ?', array($idempotencyKey));
 if ($existing && $existing['processed_at']) {
-    GC_Utils_Ex::gfPrintLog('[uniple-webhook] duplicate idempotencyKey=' . $idempotencyKey, 'webhook.log');
+    UnipleJpyc_Client::printLog('[uniple-webhook] duplicate event=' . $event . ' sessionId=' . UnipleJpyc_Client::maskToken($sessionId));
     echo json_encode(array('ok' => true, 'duplicate' => true));
     exit;
 }
@@ -111,7 +111,7 @@ if (!$existing) {
         ));
     } catch (Exception $e) {
         // race condition (UNIQUE 制約違反) は早期 200
-        GC_Utils_Ex::gfPrintLog('[uniple-webhook] race_duplicate idempotencyKey=' . $idempotencyKey, 'webhook.log');
+        UnipleJpyc_Client::printLog('[uniple-webhook] race_duplicate event=' . $event . ' sessionId=' . UnipleJpyc_Client::maskToken($sessionId));
         echo json_encode(array('ok' => true, 'duplicate' => true));
         exit;
     }
@@ -127,11 +127,12 @@ if ($event === 'checkout.session.completed' || $event === 'checkout.completed') 
     list($httpStatus, $response) = handleCanceled($objQuery, $sessionId, $event);
 }
 
-// log を processed に更新
-$objQuery->update('plg_uniple_jpyc_webhook_log', array(
-    'http_status'  => $httpStatus,
-    'processed_at' => $nowDateTime,
-), 'idempotency_key = ?', array($idempotencyKey));
+// handler 成功時だけ processed_at を記録。失敗は retry で再処理できるように残す。
+$logUpdate = array('http_status' => $httpStatus);
+if ($httpStatus >= 200 && $httpStatus < 300) {
+    $logUpdate['processed_at'] = $nowDateTime;
+}
+$objQuery->update('plg_uniple_jpyc_webhook_log', $logUpdate, 'idempotency_key = ?', array($idempotencyKey));
 
 http_response_code($httpStatus);
 echo json_encode($response);
@@ -143,31 +144,48 @@ function handleCompleted(SC_Query_Ex $objQuery, UnipleJpyc_Client $client, $sess
 {
     $mapping = $objQuery->getRow('*', 'plg_uniple_jpyc_intent_mapping', 'session_id = ?', array($sessionId));
     if (!$mapping) {
-        GC_Utils_Ex::gfPrintLog('[uniple-webhook] mapping_not_found sessionId=' . $sessionId, 'webhook.log');
+        UnipleJpyc_Client::printLog('[uniple-webhook] mapping_not_found sessionId=' . UnipleJpyc_Client::maskToken($sessionId));
         return array(200, array('ok' => true, 'warning' => 'mapping_not_found'));
     }
 
-    // 金額検証 (整数完全一致)
+    // 金額検証 (整数完全一致、amount 不在/不正は完了扱いしない)
     try {
         $amountInt = $client->toIntegerJpyc($amountRaw);
-        if ($mapping['amount_jpyc'] !== '' && (string) $amountInt !== (string) $mapping['amount_jpyc']) {
-            GC_Utils_Ex::gfPrintLog('[uniple-webhook] amount_mismatch expected=' . $mapping['amount_jpyc'] . ' actual=' . $amountInt, 'webhook.log');
-            return array(400, array('ok' => false, 'error' => 'amount_mismatch'));
-        }
     } catch (Exception $e) {
-        // amount 不正は warning 扱い (= 旧 webhook で空送信もありうる)
+        UnipleJpyc_Client::printLog('[uniple-webhook] amount_missing_or_invalid sessionId=' . UnipleJpyc_Client::maskToken($sessionId) . ' error=' . $e->getMessage());
+        return array(400, array('ok' => false, 'error' => 'amount_missing_or_invalid'));
+    }
+    try {
+        $expectedAmount = $client->toIntegerJpyc($mapping['amount_jpyc']);
+    } catch (Exception $e) {
+        UnipleJpyc_Client::printLog('[uniple-webhook] mapping_amount_invalid orderId=' . $mapping['order_id'] . ' sessionId=' . UnipleJpyc_Client::maskToken($sessionId) . ' error=' . $e->getMessage());
+        return array(500, array('ok' => false, 'error' => 'mapping_amount_invalid'));
+    }
+    if ((string) $amountInt !== (string) $expectedAmount) {
+        UnipleJpyc_Client::printLog('[uniple-webhook] amount_mismatch expected=' . $expectedAmount . ' actual=' . $amountInt . ' sessionId=' . UnipleJpyc_Client::maskToken($sessionId));
+        return array(400, array('ok' => false, 'error' => 'amount_mismatch'));
+    }
+
+    $statusResult = syncOrderStatusPreEnd($mapping, $sessionId);
+    if (!$statusResult[0]) {
+        return array(500, array('ok' => false, 'error' => $statusResult[1]));
     }
 
     if ($mapping['status'] === 'completed') {
         return array(200, array('ok' => true, 'duplicate' => true));
     }
 
-    // mapping completed 化
+    // 注文 status 同期が成功した後に mapping completed 化する。
     $objQuery->update('plg_uniple_jpyc_intent_mapping', array(
         'status'       => 'completed',
         'completed_at' => date('Y-m-d H:i:s'),
     ), 'id = ?', array($mapping['id']));
 
+    return array(200, array('ok' => true));
+}
+
+function syncOrderStatusPreEnd($mapping, $sessionId)
+{
     // 注文 status を ORDER_PRE_END (= 入金済み、定数 6) へ同期
     // SC_Helper_Purchase::sfUpdateOrderStatus は notification handle 含む安全 path
     if (defined('ORDER_PRE_END') && class_exists('SC_Helper_Purchase_Ex')) {
@@ -176,17 +194,17 @@ function handleCompleted(SC_Query_Ex $objQuery, UnipleJpyc_Client $client, $sess
                 (int) $mapping['order_id'],
                 ORDER_PRE_END
             );
-            GC_Utils_Ex::gfPrintLog('[uniple-webhook] order_status_updated_to_pre_end orderId=' . $mapping['order_id'] . ' sessionId=' . $sessionId, 'webhook.log');
+            UnipleJpyc_Client::printLog('[uniple-webhook] order_status_updated_to_pre_end orderId=' . $mapping['order_id'] . ' sessionId=' . UnipleJpyc_Client::maskToken($sessionId));
+            return array(true, '');
         } catch (Exception $e) {
-            GC_Utils_Ex::gfPrintLog('[uniple-webhook] order_status_update_failed orderId=' . $mapping['order_id'] . ' error=' . $e->getMessage(), 'webhook.log');
+            UnipleJpyc_Client::printLog('[uniple-webhook] order_status_update_failed orderId=' . $mapping['order_id'] . ' error=' . $e->getMessage());
             // status 更新失敗は 5xx で uniple 側 retry させる (= 4 系設計と同方針)
-            return array(500, array('ok' => false, 'error' => 'order_status_update_failed'));
+            return array(false, 'order_status_update_failed');
         }
-    } else {
-        GC_Utils_Ex::gfPrintLog('[uniple-webhook] order_status_helper_unavailable orderId=' . $mapping['order_id'], 'webhook.log');
     }
 
-    return array(200, array('ok' => true));
+    UnipleJpyc_Client::printLog('[uniple-webhook] order_status_helper_unavailable orderId=' . $mapping['order_id']);
+    return array(true, '');
 }
 
 function handleCanceled(SC_Query_Ex $objQuery, $sessionId, $event)
@@ -196,7 +214,7 @@ function handleCanceled(SC_Query_Ex $objQuery, $sessionId, $event)
         return array(200, array('ok' => true, 'warning' => 'mapping_not_found'));
     }
     if ($mapping['status'] === 'completed') {
-        GC_Utils_Ex::gfPrintLog('[uniple-webhook] cancel_after_completed sessionId=' . $sessionId, 'webhook.log');
+        UnipleJpyc_Client::printLog('[uniple-webhook] cancel_after_completed sessionId=' . UnipleJpyc_Client::maskToken($sessionId));
         return array(200, array('ok' => true, 'warning' => 'already_completed'));
     }
     $newStatus = ($event === 'checkout.session.expired') ? 'expired' : 'canceled';
@@ -212,9 +230,9 @@ function handleCanceled(SC_Query_Ex $objQuery, $sessionId, $event)
                 (int) $mapping['order_id'],
                 ORDER_CANCEL
             );
-            GC_Utils_Ex::gfPrintLog('[uniple-webhook] order_status_updated_to_cancel orderId=' . $mapping['order_id'] . ' newStatus=' . $newStatus, 'webhook.log');
+            UnipleJpyc_Client::printLog('[uniple-webhook] order_status_updated_to_cancel orderId=' . $mapping['order_id'] . ' newStatus=' . $newStatus . ' sessionId=' . UnipleJpyc_Client::maskToken($sessionId));
         } catch (Exception $e) {
-            GC_Utils_Ex::gfPrintLog('[uniple-webhook] order_cancel_failed orderId=' . $mapping['order_id'] . ' error=' . $e->getMessage(), 'webhook.log');
+            UnipleJpyc_Client::printLog('[uniple-webhook] order_cancel_failed orderId=' . $mapping['order_id'] . ' error=' . $e->getMessage());
             return array(500, array('ok' => false, 'error' => 'order_cancel_failed'));
         }
     }

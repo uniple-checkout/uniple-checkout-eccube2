@@ -6,34 +6,70 @@
  *   - mapping.status === 'completed' → shopping/complete + cart purge
  *   - 未到着 / pending → 入金確認中ページ (= 標準 complete に簡易メッセージで戻す)
  *
- * lookup 戦略 (= 2026-05-04 確定の uniple 真仕様に整合):
- *   primary: payment.php で $_SESSION['uniple_jpyc_pending_order_id'] に set した
- *           EC-CUBE 内部 order id を復元
- *   fallback: ?cs query (= uniple が完走時に append する Checkout Session ID)
+ * lookup 戦略:
+ *   primary: payment.php で $_SESSION に set した EC-CUBE 内部 order id /
+ *           uniple session id / merchantOrderId を照合して復元
+ *   legacy: patch 適用前に checkout 開始済みの browser session は pending_order_id
+ *           のみで救済する
  * uniple は successUrl に完走時 ?orderId=pay-sp_v3_... / ?cs=ucs_... / ?txHash 等
  * を append する。 ?orderId は uniple 側 ID で plugin の EC-CUBE 内部 ID と key 衝突
  * するため、 EC-CUBE 内部 ID は session 経路で渡す。
- * security: ログイン顧客は dtb_order.customer_id 一致 check (= 改竄対策)。
+ * security: ?cs 単体では認可しない。guest も session-bound check を必須にする。
  *
  * Codex 推奨: SC_Response_Ex::sendRedirect で URL 直書き避ける
  */
 
 require_once realpath(dirname(__FILE__) . '/../../require.php');
+require_once realpath(dirname(__FILE__) . '/../../../data/downloads/plugin/UnipleJpyc/lib/UnipleJpyc_Client.php');
 
 $objQuery = SC_Query_Ex::getSingletonInstance();
 
-// primary: payment.php で $_SESSION に保存した EC-CUBE 内部 order id
+// primary: payment.php で $_SESSION に保存した EC-CUBE 内部 order/session 情報
 $ecOrderId = isset($_SESSION['uniple_jpyc_pending_order_id']) ? (int) $_SESSION['uniple_jpyc_pending_order_id'] : 0;
-// fallback: ?cs query で uniple checkout Session ID
+$pendingSessionId = isset($_SESSION['uniple_jpyc_pending_session_id']) ? (string) $_SESSION['uniple_jpyc_pending_session_id'] : '';
+$pendingMerchantOrderId = isset($_SESSION['uniple_jpyc_pending_merchant_order_id']) ? (string) $_SESSION['uniple_jpyc_pending_merchant_order_id'] : '';
+
+// uniple が return URL に append する値。単体では認可材料にしない。
 $unipleSessionId = isset($_GET['cs']) ? (string) $_GET['cs'] : '';
+$returnMerchantOrderId = isset($_GET['merchantOrderId']) ? (string) $_GET['merchantOrderId'] : '';
+
+$merchantOrderMatches = $pendingMerchantOrderId !== ''
+    && $returnMerchantOrderId !== ''
+    && hash_equals($pendingMerchantOrderId, $returnMerchantOrderId);
+$sessionMatches = $pendingSessionId !== ''
+    && $unipleSessionId !== ''
+    && hash_equals($pendingSessionId, $unipleSessionId);
+
+// patch 適用前に checkout 開始済みの browser session だけ救済する legacy path。
+$legacyPendingSession = $ecOrderId > 0
+    && $pendingMerchantOrderId === ''
+    && $pendingSessionId === '';
+$hasValidPendingReturn = $ecOrderId > 0
+    && ($merchantOrderMatches || $sessionMatches || $legacyPendingSession);
+
+UnipleJpyc_Client::printLog(
+    '[uniple-return] entry ec_order_id=' . $ecOrderId
+    . ' cs=' . UnipleJpyc_Client::maskToken($unipleSessionId)
+    . ' merchantOrderIdPresent=' . ($returnMerchantOrderId !== '' ? '1' : '0')
+    . ' pendingSessionPresent=' . ($pendingSessionId !== '' ? '1' : '0')
+    . ' pendingMerchantOrderPresent=' . ($pendingMerchantOrderId !== '' ? '1' : '0')
+    . ' sessionMatches=' . ($sessionMatches ? '1' : '0')
+    . ' merchantOrderMatches=' . ($merchantOrderMatches ? '1' : '0')
+    . ' legacy=' . ($legacyPendingSession ? '1' : '0')
+);
 
 $mapping = null;
-if ($ecOrderId > 0) {
-    // session_id field も取得 (= live lookup で使う、 r42 option C)
-    $mapping = $objQuery->getRow('id, order_id, status, session_id', 'plg_uniple_jpyc_intent_mapping', 'order_id = ?', array($ecOrderId));
+$pendingSessionOrderMismatch = false;
+if ($hasValidPendingReturn && $pendingSessionId !== '') {
+    $mapping = $objQuery->getRow('id, order_id, status, session_id, amount_jpyc', 'plg_uniple_jpyc_intent_mapping', 'session_id = ?', array($pendingSessionId));
+    if ($mapping && (int) $mapping['order_id'] !== $ecOrderId) {
+        UnipleJpyc_Client::printLog('[uniple-return] pending_session_order_mismatch ec_order_id=' . $ecOrderId . ' mapping_order_id=' . $mapping['order_id'] . ' sessionId=' . UnipleJpyc_Client::maskToken($pendingSessionId));
+        $mapping = null;
+        $pendingSessionOrderMismatch = true;
+    }
 }
-if (!$mapping && $unipleSessionId !== '') {
-    $mapping = $objQuery->getRow('id, order_id, status, session_id', 'plg_uniple_jpyc_intent_mapping', 'session_id = ?', array($unipleSessionId));
+if (!$mapping && $hasValidPendingReturn && !$pendingSessionOrderMismatch) {
+    $mapping = $objQuery->getRow('id, order_id, status, session_id, amount_jpyc', 'plg_uniple_jpyc_intent_mapping', 'order_id = ?', array($ecOrderId));
 }
 
 // Last-line fallback (= 2026-05-13 option C、 r42 contract で uniple Codex GO):
@@ -46,34 +82,44 @@ if (!$mapping && $unipleSessionId !== '') {
 //   network / 5xx / 401 / 404 は catch して従来 pending UI fallback。
 if ($mapping && $mapping['status'] === 'pending' && !empty($mapping['session_id'])) {
     try {
-        require_once realpath(dirname(__FILE__) . '/../../../data/downloads/plugin/UnipleJpyc/lib/UnipleJpyc_Client.php');
         $config = $objQuery->getRow('api_key, webhook_secret, merchant_label, api_base_url, mode', 'plg_uniple_jpyc_config', 'id = ?', array(1));
         if ($config) {
             $client = new UnipleJpyc_Client($config);
             $liveSession = $client->getCheckoutSession((string) $mapping['session_id']);
-            $liveStatus = isset($liveSession['item']['status']) ? (string) $liveSession['item']['status'] : '';
+            $liveItem = isset($liveSession['item']) && is_array($liveSession['item']) ? $liveSession['item'] : $liveSession;
+            $liveStatus = isset($liveItem['status']) ? (string) $liveItem['status'] : '';
             $httpStatus = isset($liveSession['httpStatus']) ? (int) $liveSession['httpStatus'] : 0;
             if ($liveStatus === 'completed') {
-                // race 対策 (= codex round 2 査読 minor note): completed_at は NULL 時のみ
-                // set (= webhook が live lookup 直後に到着しても上書きしない)
-                $objQuery->update('plg_uniple_jpyc_intent_mapping', array(
-                    'status'       => 'completed',
-                    'completed_at' => 'CURRENT_TIMESTAMP',
-                    'updated_at'   => 'CURRENT_TIMESTAMP',
-                ), 'id = ? AND completed_at IS NULL', array((int) $mapping['id']));
-                // status のみは無条件 update (= 既に completed なら no-op、 確実性優先)
-                $objQuery->update('plg_uniple_jpyc_intent_mapping', array(
-                    'status'     => 'completed',
-                    'updated_at' => 'CURRENT_TIMESTAMP',
-                ), 'id = ? AND status != ?', array((int) $mapping['id'], 'completed'));
-                $mapping['status'] = 'completed';
-                GC_Utils_Ex::gfPrintLog('[uniple-return] live_lookup_completed order_id=' . $mapping['order_id'] . ' sessionId=' . $mapping['session_id'] . ' httpStatus=' . $httpStatus, 'uniple_return.log');
+                $liveAmountRaw = isset($liveItem['amountJpyc']) ? $liveItem['amountJpyc']
+                    : (isset($liveItem['amount_jpyc']) ? $liveItem['amount_jpyc'] : null);
+                try {
+                    $actualAmount = $client->toIntegerJpyc($liveAmountRaw);
+                    $expectedAmount = $client->toIntegerJpyc($mapping['amount_jpyc']);
+                    if ((string) $actualAmount === (string) $expectedAmount) {
+                        // race 対策 (= codex round 2 査読 minor note): completed_at は NULL 時のみ
+                        // set (= webhook が live lookup 直後に到着しても上書きしない)
+                        $objQuery->update('plg_uniple_jpyc_intent_mapping', array(
+                            'status'       => 'completed',
+                            'completed_at' => 'CURRENT_TIMESTAMP',
+                        ), 'id = ? AND completed_at IS NULL', array((int) $mapping['id']));
+                        // status のみは無条件 update (= 既に completed なら no-op、 確実性優先)
+                        $objQuery->update('plg_uniple_jpyc_intent_mapping', array(
+                            'status' => 'completed',
+                        ), 'id = ? AND status != ?', array((int) $mapping['id'], 'completed'));
+                        $mapping['status'] = 'completed';
+                        UnipleJpyc_Client::printLog('[uniple-return] live_lookup_completed order_id=' . $mapping['order_id'] . ' sessionId=' . UnipleJpyc_Client::maskToken($mapping['session_id']) . ' httpStatus=' . $httpStatus . ' amount=' . $actualAmount);
+                    } else {
+                        UnipleJpyc_Client::printLog('[uniple-return] live_lookup_amount_mismatch order_id=' . $mapping['order_id'] . ' sessionId=' . UnipleJpyc_Client::maskToken($mapping['session_id']) . ' expected=' . $expectedAmount . ' actual=' . $actualAmount . ' httpStatus=' . $httpStatus);
+                    }
+                } catch (Exception $e) {
+                    UnipleJpyc_Client::printLog('[uniple-return] live_lookup_amount_invalid order_id=' . $mapping['order_id'] . ' sessionId=' . UnipleJpyc_Client::maskToken($mapping['session_id']) . ' error=' . $e->getMessage() . ' httpStatus=' . $httpStatus);
+                }
             } else {
-                GC_Utils_Ex::gfPrintLog('[uniple-return] live_lookup_not_completed order_id=' . $mapping['order_id'] . ' sessionId=' . $mapping['session_id'] . ' liveStatus=' . $liveStatus . ' httpStatus=' . $httpStatus, 'uniple_return.log');
+                UnipleJpyc_Client::printLog('[uniple-return] live_lookup_not_completed order_id=' . $mapping['order_id'] . ' sessionId=' . UnipleJpyc_Client::maskToken($mapping['session_id']) . ' liveStatus=' . $liveStatus . ' httpStatus=' . $httpStatus);
             }
         }
     } catch (Exception $e) {
-        GC_Utils_Ex::gfPrintLog('[uniple-return] live_lookup_failed order_id=' . $mapping['order_id'] . ' sessionId=' . $mapping['session_id'] . ' error=' . $e->getMessage(), 'uniple_return.log');
+        UnipleJpyc_Client::printLog('[uniple-return] live_lookup_failed order_id=' . $mapping['order_id'] . ' sessionId=' . UnipleJpyc_Client::maskToken($mapping['session_id']) . ' error=' . $e->getMessage());
         // 従来 pending fallback path に倒れる
     }
 }
@@ -83,10 +129,10 @@ $objResponse = new SC_Response_Ex();
 
 if ($mapping && $mapping['status'] === 'completed') {
     // ログイン顧客の場合は dtb_order.customer_id 一致 check (= 改竄対策)
-    $authorized = true;
+    $authorized = $hasValidPendingReturn;
     $objCustomer = new SC_Customer_Ex();
     $customerId = (int) $objCustomer->getValue('customer_id');
-    if ($customerId > 0) {
+    if ($authorized && $customerId > 0) {
         $orderRow = $objQuery->getRow('customer_id', 'dtb_order', 'order_id = ?', array((int) $mapping['order_id']));
         if (!$orderRow || (int) $orderRow['customer_id'] !== $customerId) {
             $authorized = false;
@@ -105,7 +151,7 @@ if ($mapping && $mapping['status'] === 'completed') {
                 $objCartSession->delAllProducts($cartKey);
             }
         } catch (Exception $e) {
-            GC_Utils_Ex::gfPrintLog('[uniple-return] cart_purge_failed order_id=' . $mapping['order_id'] . ' error=' . $e->getMessage(), 'uniple_return.log');
+            UnipleJpyc_Client::printLog('[uniple-return] cart_purge_failed order_id=' . $mapping['order_id'] . ' error=' . $e->getMessage());
         }
 
         // LC_Page_Shopping_Complete::action() は $_SESSION['order_id'] を見て注文番号を表示する。
@@ -119,18 +165,20 @@ if ($mapping && $mapping['status'] === 'completed') {
         // 次回の購入で payment.php が別 order_id で上書きするので残しておいても安全。
 
         // 標準の注文完了ページへ
-        GC_Utils_Ex::gfPrintLog('[uniple-return] complete order_id=' . $mapping['order_id'] . ' sessionId=' . $unipleSessionId, 'uniple_return.log');
+        UnipleJpyc_Client::printLog('[uniple-return] complete order_id=' . $mapping['order_id'] . ' sessionId=' . UnipleJpyc_Client::maskToken($mapping['session_id']));
         $objResponse->sendRedirect(SHOPPING_COMPLETE_URLPATH, array(), true);
         exit;
     }
 
     // 認可 fail (= 他人の order ID を踏もうとした) も session を破棄
     unset($_SESSION['uniple_jpyc_pending_order_id']);
-    GC_Utils_Ex::gfPrintLog('[uniple-return] unauthorized order_id=' . $mapping['order_id'] . ' customer_id=' . $customerId, 'uniple_return.log');
+    unset($_SESSION['uniple_jpyc_pending_session_id']);
+    unset($_SESSION['uniple_jpyc_pending_merchant_order_id']);
+    UnipleJpyc_Client::printLog('[uniple-return] unauthorized order_id=' . $mapping['order_id'] . ' customer_id=' . $customerId . ' cs=' . UnipleJpyc_Client::maskToken($unipleSessionId));
 }
 
 // webhook 未到着 or pending → 注文完了ページに pending パラメータ付きで戻す
 // (= 標準 complete page で「入金確認中」を表示するか、別 template に飛ばすかは後 phase で UX 調整)
-GC_Utils_Ex::gfPrintLog('[uniple-return] pending ec_order_id=' . $ecOrderId . ' cs=' . $unipleSessionId, 'uniple_return.log');
+UnipleJpyc_Client::printLog('[uniple-return] pending ec_order_id=' . $ecOrderId . ' cs=' . UnipleJpyc_Client::maskToken($unipleSessionId) . ' validReturn=' . ($hasValidPendingReturn ? '1' : '0'));
 $objResponse->sendRedirect(SHOPPING_COMPLETE_URLPATH, array('uniple_pending' => '1'), true);
 exit;

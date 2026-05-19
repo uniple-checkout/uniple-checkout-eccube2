@@ -12,6 +12,7 @@
  */
 
 require_once CLASS_EX_REALDIR . 'page_extends/admin/LC_Page_Admin_Ex.php';
+require_once realpath(dirname(__FILE__) . '/lib/UnipleJpyc_Client.php');
 
 class LC_Page_Plugin_UnipleJpyc_Config extends LC_Page_Admin_Ex
 {
@@ -41,6 +42,7 @@ class LC_Page_Plugin_UnipleJpyc_Config extends LC_Page_Admin_Ex
         $this->initParam($objFormParam);
 
         $formAction = isset($_POST['form_action']) ? $_POST['form_action'] : '';
+        $currentRow = $objQuery->getRow('*', 'plg_uniple_jpyc_config', 'id = ?', array(1));
 
         if ($formAction === 'save') {
             // CSRF: LC_Page_Admin の transactionid 機構
@@ -49,13 +51,25 @@ class LC_Page_Plugin_UnipleJpyc_Config extends LC_Page_Admin_Ex
             $objFormParam->setParam($_POST);
             $arrErr = $objFormParam->checkError();
             $arrParams = $objFormParam->getHashArray();
+            $apiBaseUrl = $arrParams['api_base_url'] !== '' ? $arrParams['api_base_url'] : UnipleJpyc_Client::DEFAULT_API_BASE_URL;
+            if (!UnipleJpyc_Client::isAllowedApiBaseUrl($apiBaseUrl)) {
+                $arrErr['api_base_url'] = 'API Base URL は https://uniple.io または https://dev.uniple.io のみ指定できます。';
+            }
 
             if (count($arrErr) === 0) {
+                $apiKey = (string) $arrParams['api_key'];
+                if ($apiKey === '' && $currentRow) {
+                    $apiKey = (string) $currentRow['api_key'];
+                }
+                $webhookSecret = (string) $arrParams['webhook_secret'];
+                if ($webhookSecret === '' && $currentRow) {
+                    $webhookSecret = (string) $currentRow['webhook_secret'];
+                }
                 $objQuery->update('plg_uniple_jpyc_config', array(
-                    'api_key'        => $arrParams['api_key'],
-                    'webhook_secret' => $arrParams['webhook_secret'],
+                    'api_key'        => $apiKey,
+                    'webhook_secret' => $webhookSecret,
                     'merchant_label' => $arrParams['merchant_label'],
-                    'api_base_url'   => $arrParams['api_base_url'] !== '' ? $arrParams['api_base_url'] : 'https://uniple.io',
+                    'api_base_url'   => UnipleJpyc_Client::normalizeApiBaseUrl($apiBaseUrl),
                     'mode'           => in_array($arrParams['mode'], array('live', 'test'), true) ? $arrParams['mode'] : 'live',
                     'update_date'    => 'CURRENT_TIMESTAMP',
                 ), 'id = ?', array(1));
@@ -65,25 +79,24 @@ class LC_Page_Plugin_UnipleJpyc_Config extends LC_Page_Admin_Ex
                 // 保存後 DB から再読込して直接 render する
                 $row = $objQuery->getRow('*', 'plg_uniple_jpyc_config', 'id = ?', array(1));
                 if ($row) {
-                    $this->arrForm = $row;
+                    $this->arrForm = $this->prepareFormForDisplay($row);
                 }
             } else {
                 $this->arrErr = $arrErr;
-                $this->arrForm = $arrParams;
+                $this->arrForm = $this->prepareFormForDisplay($arrParams, is_array($currentRow) ? $currentRow : array());
             }
         } else {
             // GET 時は DB から読込
-            $row = $objQuery->getRow('*', 'plg_uniple_jpyc_config', 'id = ?', array(1));
-            if ($row) {
-                $this->arrForm = $row;
+            if ($currentRow) {
+                $this->arrForm = $this->prepareFormForDisplay($currentRow);
             } else {
-                $this->arrForm = array(
+                $this->arrForm = $this->prepareFormForDisplay(array(
                     'api_key'        => '',
                     'webhook_secret' => '',
                     'merchant_label' => '',
-                    'api_base_url'   => 'https://uniple.io',
+                    'api_base_url'   => UnipleJpyc_Client::DEFAULT_API_BASE_URL,
                     'mode'           => 'live',
-                );
+                ));
             }
         }
 
@@ -103,6 +116,29 @@ class LC_Page_Plugin_UnipleJpyc_Config extends LC_Page_Admin_Ex
         $objFormParam->addParam('加盟店表示名', 'merchant_label', 100, 'KVa', array('MAX_LENGTH_CHECK'));
         $objFormParam->addParam('API Base URL', 'api_base_url', 255, 'KVa', array('MAX_LENGTH_CHECK', 'URL_CHECK'));
         $objFormParam->addParam('動作モード', 'mode', 16, 'a', array('MAX_LENGTH_CHECK'));
+    }
+
+    private function prepareFormForDisplay($row, $secretRow = null)
+    {
+        $row = is_array($row) ? $row : array();
+        $secretRow = is_array($secretRow) ? $secretRow : $row;
+
+        $row['api_key_masked'] = isset($secretRow['api_key']) && (string) $secretRow['api_key'] !== ''
+            ? UnipleJpyc_Client::maskToken($secretRow['api_key'])
+            : '';
+        $row['webhook_secret_masked'] = isset($secretRow['webhook_secret']) && (string) $secretRow['webhook_secret'] !== ''
+            ? UnipleJpyc_Client::maskToken($secretRow['webhook_secret'])
+            : '';
+        $row['api_key'] = '';
+        $row['webhook_secret'] = '';
+        if (empty($row['api_base_url'])) {
+            $row['api_base_url'] = UnipleJpyc_Client::DEFAULT_API_BASE_URL;
+        }
+        if (empty($row['mode'])) {
+            $row['mode'] = 'live';
+        }
+
+        return $row;
     }
 
     /**
