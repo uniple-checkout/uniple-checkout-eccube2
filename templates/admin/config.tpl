@@ -13,6 +13,14 @@
 
     <h2>uniple checkout 設定</h2>
 
+    <!--{if empty($arrForm.api_key_masked)}-->
+    <div class="message" style="border:1px solid #ffd0a8; background:#fff7ec; padding:12px; margin:12px 0;">
+        uniple checkout のご利用には加盟店申請が必要です。
+        <a href="https://forms.gle/b8kwVZeynA1ffV8j6" target="_blank" rel="noopener noreferrer">こちらから申請してください</a>
+        (= 承認後 API key / webhook secret が発行されます)。
+    </div>
+    <!--{/if}-->
+
     <!-- ⚖️ JPYC の法令上の分類 -->
     <div class="message" style="border:1px solid #d0e3ff; background:#eef5ff; padding:12px; margin:12px 0;">
         <strong>⚖️ JPYC の法令上の分類</strong><br>

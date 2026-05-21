@@ -26,6 +26,13 @@ EC-CUBE 2 系加盟店向け、uniple checkout 決済プラグイン。
 
 ## クイックスタート
 
+### Step 0: 加盟店申請
+
+uniple checkout のご利用には加盟店申請が必要です。承認後、設定に必要な
+API key / webhook secret が発行されます。
+
+- 申請フォーム: https://forms.gle/b8kwVZeynA1ffV8j6
+
 ```bash
 # 1. plugin を data/downloads/plugin/UnipleJpyc/ に展開
 cd /var/www/eccube2/data/downloads/plugin/
