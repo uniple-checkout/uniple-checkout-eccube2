@@ -8,21 +8,21 @@ EC-CUBE 2 系加盟店向け、uniple checkout 決済プラグイン。
 >
 > 加盟店側は **uniple が PSP として介在する設計のため、電子決済手段等取引業 (資金決済法第 2 条第 10 項) の登録は不要**です。
 
-## 対応 EC-CUBE バージョン
+## 商標と非公式配布について
 
-- **EC-CUBE 2.17.2-p2** (= 推奨、MVP 開発検証バージョン)
-- EC-CUBE 2.25.0 (= CI で同時 confirm 予定)
-- 4 系版は別 plugin (= `app/Plugin/UnipleJpyc`、別 GitHub repo) で公開済
+- 「EC-CUBE」は株式会社イーシーキューブの商標です。
+- 本 plugin は uniple inc. による非公式配布であり、株式会社イーシーキューブによる
+  公式認定・保証は受けていません。公式ロゴ・公式素材は配布物に含めていません。
 
-## 動作要件
+## Requirements
 
-| 項目 | 推奨 |
+| Component | Version |
 |---|---|
-| EC-CUBE | 2.17.2-p2 / 2.25.0 |
-| PHP | 8.0+ (= 2.17.2-p2 公式対応) |
-| DB | MariaDB 10.6+ / MySQL 8.0+ |
-| Web | Nginx + PHP-FPM (本番)、`php -S` (開発) |
-| HTTPS | 必須 (= webhook 受信) |
+| EC-CUBE | 2.17.x |
+| PHP | 7.0+ (random_bytes 等 7.0+ 関数を使用、5.6 サポート対象外) |
+| DB | MariaDB 10.x / MySQL 5.7+ |
+
+4 系版は別 plugin (= `app/Plugin/UnipleJpyc`、別 GitHub repo) で公開済です。HTTPS は webhook 受信のため必須です。
 
 ## クイックスタート
 
@@ -74,6 +74,11 @@ JPYC 株式会社の presskit (= JPYC Logo Guideline v1.1, 2025.08.12) ガイド
 - [Merchant Integration Spec (= 加盟店向け統合仕様書)](docs/merchant-integration-spec.md) — 全カート共通 spec + カート別 reference (= EC-CUBE 4/2 / WP / Shopify / 独自) + onboarding
 - uniple 加盟店 API spec (= SSOT): `https://uniple.io/docs/merchant-api`
 - 4 系 plugin (= 流用元 reference): https://github.com/<owner>/uniple-eccube4-plugin
+
+## Support
+
+- 加盟店申請: https://forms.gle/b8kwVZeynA1ffV8j6
+- Bug reports / questions: support@uniple.io
 
 ## 既知の制約 (MVP)
 
@@ -222,7 +227,7 @@ EC-CUBE 標準の error 画面 + 加盟店側の microcopy で「数分後に再
 
 ## ライセンス
 
-GPL (= EC-CUBE 2.x 標準ライセンス互換)
+GPLv2 or later (= EC-CUBE 2.x 標準ライセンス互換)
 
 ---
 

@@ -1,5 +1,22 @@
 <?php
 /*
+ * uniple checkout for EC-CUBE 2
+ * Copyright (C) 2026 uniple inc.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License, version 2,
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
+/*
  * uniple Merchant API client for EC-CUBE 2.x
  *
  * 4 系 plugin (Symfony 6.4 + Guzzle) から PHP 標準 curl + 同等仕様で移植。
@@ -20,7 +37,7 @@ class UnipleJpyc_Client
      * plugin version (= plugin_info.php と同期手動維持、 release 時 bump 必須)。
      * 用途 = User-Agent header の telemetry / version tracing (= r47 採択)。
      */
-    const PLUGIN_VERSION = '0.1.0';
+    const PLUGIN_VERSION = '0.1.1';
 
     /** @var array {api_key, webhook_secret, merchant_label, api_base_url, mode} */
     private $config;
@@ -172,7 +189,7 @@ class UnipleJpyc_Client
      * User-Agent header 構築 (= telemetry / version tracing 用、 r47 採択)。
      *
      * 形式: `uniple-plugin-eccube2/<plugin-version> (EC-CUBE/<eccube-version>)`
-     * 例: `uniple-plugin-eccube2/0.1.0 (EC-CUBE/2.17.2-p2)`
+     * 例: `uniple-plugin-eccube2/0.1.1 (EC-CUBE/2.17.2-p2)`
      */
     private function buildUserAgent()
     {
