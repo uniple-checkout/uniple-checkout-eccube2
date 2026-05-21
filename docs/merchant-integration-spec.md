@@ -34,7 +34,7 @@ for LINE** を組み込むための統合仕様書。 plugin docs を入口、 M
 - 有効期限: 無期限 (= rotation は admin UI で旧 key 即時無効化 + 新 key 発行)
 
 ### Webhook Signing Secret
-- 形式: 64 hex (= `b20e8fd0737c0700680fe0ddc64ef926cfbbe6533772e365cce18da5fdd8e50a` 風)
+- 形式: 64 hex (= `xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx` 風 (= 発行時に表示される実値で置換))
 - 用途: webhook ペイロードの HMAC-SHA256 署名検証
 - header: `X-Uniple-Signature: sha256=<hex>`
 - 計算: `hash_hmac('sha256', $rawBody, $webhookSecret)` (= raw body、 JSON parse 前)
