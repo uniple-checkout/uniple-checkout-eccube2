@@ -144,7 +144,7 @@ class UnipleJpyc_X402ProductSync
         if ($image === '') {
             return '';
         }
-        $base = defined('HTTPS_URL') ? rtrim(HTTPS_URL, '/') : '';
+        $base = $this->siteBaseUrl();
         $path = defined('IMAGE_SAVE_URLPATH') ? IMAGE_SAVE_URLPATH : '/upload/save_image/';
 
         return $base . '/' . ltrim($path, '/') . rawurlencode($image);
@@ -152,9 +152,31 @@ class UnipleJpyc_X402ProductSync
 
     private function pageUrl($row)
     {
-        $base = defined('HTTPS_URL') ? rtrim(HTTPS_URL, '/') : '';
+        $base = $this->siteBaseUrl();
 
         return $base . '/products/detail.php?product_id=' . (int) $row['product_id'];
+    }
+
+    private function siteBaseUrl()
+    {
+        $base = defined('HTTPS_URL') ? rtrim(HTTPS_URL, '/') : '';
+        $host = parse_url($base, PHP_URL_HOST);
+        if ($host !== 'localhost' && $host !== '127.0.0.1') {
+            return $base;
+        }
+
+        $publicUrl = getenv('UNIPLE_PUBLIC_SITE_URL');
+        if (is_string($publicUrl) && trim($publicUrl) !== '') {
+            return rtrim(trim($publicUrl), '/');
+        }
+
+        if (!empty($_SERVER['HTTP_HOST']) && $_SERVER['HTTP_HOST'] !== 'localhost' && $_SERVER['HTTP_HOST'] !== '127.0.0.1') {
+            $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+
+            return $scheme . '://' . $_SERVER['HTTP_HOST'];
+        }
+
+        return $base;
     }
 
     private function isActive($row)

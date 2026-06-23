@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.3] - 2026-06-23
+### Fixed
+- CLIからx402商品同期を実行する場合に、公開商品URLへ `UNIPLE_PUBLIC_SITE_URL` を指定できるように修正
+
 ## [0.1.2] - 2026-06-23
 ### Added
 - x402 / AI購入向けの商品同期ボタンを管理画面に追加

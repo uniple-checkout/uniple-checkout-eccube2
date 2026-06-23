@@ -37,7 +37,7 @@ class UnipleJpyc_Client
      * plugin version (= plugin_info.php と同期手動維持、 release 時 bump 必須)。
      * 用途 = User-Agent header の telemetry / version tracing (= r47 採択)。
      */
-    const PLUGIN_VERSION = '0.1.2';
+    const PLUGIN_VERSION = '0.1.3';
 
     /** @var array {api_key, webhook_secret, merchant_label, api_base_url, mode} */
     private $config;

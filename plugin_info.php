@@ -35,7 +35,7 @@ class plugin_info
     public static $PLUGIN_NAME          = 'uniple checkout';
 
     /** プラグインバージョン (= 4 系と独立な version 番号) */
-    public static $PLUGIN_VERSION       = '0.1.2';
+    public static $PLUGIN_VERSION       = '0.1.3';
 
     /** EC-CUBE 対応バージョン */
     public static $COMPLIANT_VERSION    = '2.17.x';
@@ -57,7 +57,7 @@ class plugin_info
     public static $CLASS_NAME           = 'UnipleJpyc';
 
     /** ローカル設定可能フラグ */
-    public static $LOCAL_VERSION        = '0.1.2';
+    public static $LOCAL_VERSION        = '0.1.3';
 
     /** ライセンス */
     public static $LICENSE              = 'GPLv2 or later';
