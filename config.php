@@ -30,6 +30,7 @@
 
 require_once CLASS_EX_REALDIR . 'page_extends/admin/LC_Page_Admin_Ex.php';
 require_once realpath(dirname(__FILE__) . '/lib/UnipleJpyc_Client.php');
+require_once realpath(dirname(__FILE__) . '/lib/UnipleJpyc_X402ProductSync.php');
 
 class LC_Page_Plugin_UnipleJpyc_Config extends LC_Page_Admin_Ex
 {
@@ -101,6 +102,39 @@ class LC_Page_Plugin_UnipleJpyc_Config extends LC_Page_Admin_Ex
             } else {
                 $this->arrErr = $arrErr;
                 $this->arrForm = $this->prepareFormForDisplay($arrParams, is_array($currentRow) ? $currentRow : array());
+            }
+        } elseif ($formAction === 'x402_sync') {
+            $this->doValidUnipleToken();
+
+            if (!$currentRow || trim((string) $currentRow['api_key']) === '') {
+                $this->arrErr['x402_sync'] = 'Merchant API Key を保存してから x402商品同期を実行してください。';
+            } else {
+                try {
+                    $client = new UnipleJpyc_Client(array(
+                        'api_key'        => $currentRow['api_key'],
+                        'webhook_secret' => $currentRow['webhook_secret'],
+                        'merchant_label' => $currentRow['merchant_label'],
+                        'api_base_url'   => $currentRow['api_base_url'],
+                        'mode'           => $currentRow['mode'],
+                    ));
+                    $sync = new UnipleJpyc_X402ProductSync($objQuery, $client);
+                    $result = $sync->syncAll();
+                    $this->arrInfo[] = sprintf(
+                        'x402商品同期を実行しました。同期: %d件 / 有効: %d件 / 無効: %d件 / 同期対象外: %d件',
+                        $result['synced'],
+                        $result['active'],
+                        $result['inactive'],
+                        $result['skipped']
+                    );
+                } catch (Exception $e) {
+                    $this->arrErr['x402_sync'] = 'x402商品同期に失敗しました: ' . $e->getMessage();
+                    UnipleJpyc_Client::printLog('[uniple-x402] product sync failed error=' . $e->getMessage());
+                }
+            }
+
+            $row = $objQuery->getRow('*', 'plg_uniple_jpyc_config', 'id = ?', array(1));
+            if ($row) {
+                $this->arrForm = $this->prepareFormForDisplay($row);
             }
         } else {
             // GET 時は DB から読込

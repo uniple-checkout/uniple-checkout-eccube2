@@ -6,7 +6,7 @@
  *}
 
 <form name="form1" id="form1" method="post" action="<!--{$smarty.server.REQUEST_URI|escape}-->" autocomplete="off">
-<input type="hidden" name="form_action" value="save" />
+<input type="hidden" name="form_action" id="form_action" value="save" />
 <input type="hidden" name="transactionid" value="<!--{$arrForm.transactionid|escape}-->" />
 
 <div class="contents-main">
@@ -103,6 +103,16 @@
         <tr><th>Allowed Cancel URL</th><td><code><!--{$cancelUrl|escape}--></code></td></tr>
     </table>
     <p class="info-msg">配送 retry は 7 attempts / 約 3 日間 (1m → 5m → 30m → 2h → 6h → 24h → 48h)。署名は HMAC-SHA256 (header: X-Uniple-Signature: sha256=&lt;hex&gt;)。</p>
+
+    <h3>x402 / AI購入 商品同期</h3>
+    <div class="message" style="border:1px solid #d0e3ff; background:#eef5ff; padding:12px; margin:12px 0;">
+        EC-CUBE2の商品マスタをunipleの商品catalogへ同期します。公開中・販売可能・価格ありの商品規格は「有効」として同期されます。<br>
+        通常のHosted Checkout / LINE / WalletConnect決済フローは変更されません。
+        <!--{if !empty($arrErr.x402_sync)}--><p class="attention"><!--{$arrErr.x402_sync|escape}--></p><!--{/if}-->
+        <p style="margin:12px 0 0;">
+            <button type="submit" class="btn" onclick="document.getElementById('form_action').value='x402_sync';">x402商品同期</button>
+        </p>
+    </div>
 
     <!-- presskit 必須 3 行免責表記 -->
     <div class="message" style="border:1px solid #ddd; background:#fafafa; padding:12px; margin:24px 0; font-size:0.9em; color:#666;">

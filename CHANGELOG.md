@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.2] - 2026-06-23
+### Added
+- x402 / AI購入向けの商品同期ボタンを管理画面に追加
+- x402完了webhookからEC-CUBE2注文を作成し、入金済みにする処理を追加
+
 ## [0.1.1] - 2026-05-21
 ### Added
 - 加盟店申請 Form URL 動線 (templates/admin/config.tpl + README)

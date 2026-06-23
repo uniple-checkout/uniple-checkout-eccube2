@@ -37,7 +37,7 @@ class UnipleJpyc_Client
      * plugin version (= plugin_info.php と同期手動維持、 release 時 bump 必須)。
      * 用途 = User-Agent header の telemetry / version tracing (= r47 採択)。
      */
-    const PLUGIN_VERSION = '0.1.1';
+    const PLUGIN_VERSION = '0.1.2';
 
     /** @var array {api_key, webhook_secret, merchant_label, api_base_url, mode} */
     private $config;
@@ -349,6 +349,65 @@ class UnipleJpyc_Client
         $data['httpStatus'] = $httpStatus;
 
         return $data;
+    }
+
+    /**
+     * x402 / AI purchase catalog 用の商品情報を uniple に同期する。
+     *
+     * @param  array $products
+     * @return array
+     * @throws Exception
+     */
+    public function syncProducts(array $products)
+    {
+        if (count($products) > 200) {
+            throw new InvalidArgumentException('products max 200');
+        }
+        if ($this->config['api_key'] === '') {
+            throw new Exception('uniple_api_key_not_configured');
+        }
+        $baseUrl = self::normalizeApiBaseUrl($this->config['api_base_url']);
+        if (!self::isAllowedApiBaseUrl($baseUrl)) {
+            throw new Exception('uniple_api_base_url_not_allowed');
+        }
+
+        $endpoint = $baseUrl . '/api/merchant/products';
+        $jsonBody = json_encode(array(
+            'products' => array_values($products),
+        ), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
+        $ch = curl_init($endpoint);
+        curl_setopt_array($ch, array(
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CUSTOMREQUEST  => 'PUT',
+            CURLOPT_POSTFIELDS     => $jsonBody,
+            CURLOPT_TIMEOUT        => self::TIMEOUT_SECONDS,
+            CURLOPT_CONNECTTIMEOUT => self::CONNECT_TIMEOUT_SECONDS,
+            CURLOPT_HTTPHEADER     => array(
+                'Authorization: Bearer ' . $this->config['api_key'],
+                'Content-Type: application/json',
+                'Accept: application/json',
+                'User-Agent: ' . $this->buildUserAgent(),
+            ),
+        ));
+        $raw = curl_exec($ch);
+        $errno = curl_errno($ch);
+        $err = curl_error($ch);
+        $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($errno !== 0 || $raw === false) {
+            throw new Exception('uniple_products_unreachable: ' . $err);
+        }
+
+        $payload = json_decode((string) $raw, true);
+        if ($status < 200 || $status >= 300 || !is_array($payload) || (isset($payload['ok']) && !$payload['ok'])) {
+            throw new Exception('uniple_products_failed: status=' . $status . ' body=' . substr((string) $raw, 0, 300));
+        }
+
+        $payload['httpStatus'] = $status;
+
+        return $payload;
     }
 
     /**

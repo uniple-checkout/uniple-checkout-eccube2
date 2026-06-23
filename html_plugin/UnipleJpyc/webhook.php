@@ -95,16 +95,35 @@ $event = isset($payload['event']) ? (string) $payload['event']
 $data = isset($payload['data']) && is_array($payload['data']) ? $payload['data'] : $payload;
 $sessionId = isset($data['sessionId']) ? (string) $data['sessionId']
     : (isset($data['session_id']) ? (string) $data['session_id'] : '');
+$clientReferenceId = isset($data['clientReferenceId']) ? (string) $data['clientReferenceId']
+    : (isset($data['client_reference_id']) ? (string) $data['client_reference_id'] : '');
+$merchantOrderId = isset($data['merchantOrderId']) ? (string) $data['merchantOrderId']
+    : (isset($data['merchant_order_id']) ? (string) $data['merchant_order_id'] : '');
+$productSku = isset($data['productSku']) ? (string) $data['productSku']
+    : (isset($data['product_sku']) ? (string) $data['product_sku'] : '');
 $amountRaw = isset($data['amountJpyc']) ? $data['amountJpyc']
     : (isset($data['amount_jpyc']) ? $data['amount_jpyc'] : '');
+$isCompletedEvent = $event === 'checkout.session.completed' || $event === 'checkout.completed';
+$normalMapping = $sessionId !== ''
+    ? $objQuery->getRow('id', 'plg_uniple_jpyc_intent_mapping', 'session_id = ?', array($sessionId))
+    : null;
+$isX402Completed = $isCompletedEvent && $productSku !== '' && (!$normalMapping);
 
-if ($event === '' || $sessionId === '') {
+if ($event === '' || ($sessionId === '' && !$isX402Completed)) {
     http_response_code(400);
     echo json_encode(array('ok' => false, 'error' => 'missing_required_field'));
     exit;
 }
 
-$idempotencyKey = $event . ':' . $sessionId;
+$idempotencyRef = $sessionId !== ''
+    ? $sessionId
+    : ($merchantOrderId !== ''
+        ? $merchantOrderId
+        : ($clientReferenceId !== '' ? $clientReferenceId : hash('sha256', $rawBody)));
+if (strlen($idempotencyRef) > 180) {
+    $idempotencyRef = hash('sha256', $idempotencyRef);
+}
+$idempotencyKey = $event . ':' . $idempotencyRef;
 $nowDateTime = date('Y-m-d H:i:s');
 $sigPrefix = $sigHeader !== '' ? substr(preg_replace('/^sha256=/', '', $sigHeader), 0, 12) : '';
 
@@ -139,7 +158,11 @@ $httpStatus = 200;
 $response = array('ok' => true);
 
 if ($event === 'checkout.session.completed' || $event === 'checkout.completed') {
-    list($httpStatus, $response) = handleCompleted($objQuery, $client, $sessionId, $amountRaw);
+    if ($isX402Completed) {
+        list($httpStatus, $response) = handleX402Completed($objQuery, $data, $idempotencyRef);
+    } else {
+        list($httpStatus, $response) = handleCompleted($objQuery, $client, $sessionId, $amountRaw);
+    }
 } elseif ($event === 'checkout.session.canceled' || $event === 'checkout.session.expired' || $event === 'checkout.session.failed') {
     list($httpStatus, $response) = handleCanceled($objQuery, $sessionId, $event);
 }
@@ -222,6 +245,405 @@ function syncOrderStatusPreEnd($mapping, $sessionId)
 
     UnipleJpyc_Client::printLog('[uniple-webhook] order_status_helper_unavailable orderId=' . $mapping['order_id']);
     return array(true, '');
+}
+
+function handleX402Completed(SC_Query_Ex $objQuery, array $data, $idempotencyRef)
+{
+    $productSku = readPayloadString($data, array('productSku', 'product_sku'));
+    $amount = safeToOrderAmount(isset($data['amountJpyc']) ? $data['amountJpyc'] : (isset($data['amount_jpyc']) ? $data['amount_jpyc'] : null));
+    if ($productSku === '' || $amount === null) {
+        UnipleJpyc_Client::printLog('[uniple-webhook] x402_missing_required_field productSku=' . $productSku);
+        return array(400, array('ok' => false, 'error' => 'x402_missing_required_field'));
+    }
+
+    $product = findX402ProductClass($objQuery, $productSku);
+    if (!$product) {
+        UnipleJpyc_Client::printLog('[uniple-webhook] x402_product_not_found productSku=' . $productSku);
+        return array(404, array('ok' => false, 'error' => 'product_not_found'));
+    }
+
+    $orderTempId = 'x402-' . substr(hash('sha256', $idempotencyRef), 0, 40);
+    $existing = $objQuery->getRow('order_id', 'dtb_order', 'order_temp_id = ?', array($orderTempId));
+    if ($existing && isset($existing['order_id'])) {
+        return array(200, array('ok' => true, 'duplicate' => true, 'orderId' => (int) $existing['order_id']));
+    }
+
+    $payer = readPayloadString($data, array('payer', 'from'));
+    $merchantOrderId = readPayloadString($data, array('merchantOrderId', 'merchant_order_id'));
+    $clientReferenceId = readPayloadString($data, array('clientReferenceId', 'client_reference_id'));
+    $txHash = readPayloadString($data, array('txHash', 'tx_hash', 'transactionId', 'transaction_id'));
+    $itemName = readPayloadString($data, array('itemName', 'item_name'));
+    if ($itemName === '') {
+        $itemName = (string) $product['name'];
+    }
+    $shipping = x402ShippingAddress($objQuery, $data, $payer);
+    $email = readPayloadString($data, array('email', 'buyerEmail', 'buyer_email', 'payerEmail', 'payer_email'));
+    if ($email === '') {
+        $email = $shipping['email'];
+    }
+    if ($email === '') {
+        $email = 'x402-agent@uniple.local';
+    }
+
+    $payment = $objQuery->getRow(
+        'payment_id, payment_method',
+        'dtb_payment',
+        'payment_method LIKE ? OR module_path LIKE ? ORDER BY payment_id DESC',
+        array('%uniple%', '%UnipleJpyc%')
+    );
+    $paymentId = $payment && isset($payment['payment_id']) ? (int) $payment['payment_id'] : 0;
+    $paymentMethod = $payment && isset($payment['payment_method']) && $payment['payment_method'] !== ''
+        ? (string) $payment['payment_method']
+        : 'JPYC決済 (uniple checkout)';
+
+    $orderParams = array(
+        'order_temp_id'    => $orderTempId,
+        'customer_id'      => 0,
+        'order_name01'     => $shipping['name01'],
+        'order_name02'     => $shipping['name02'],
+        'order_kana01'     => $shipping['kana01'],
+        'order_kana02'     => $shipping['kana02'],
+        'order_email'      => $email,
+        'order_tel01'      => $shipping['tel01'],
+        'order_tel02'      => $shipping['tel02'],
+        'order_tel03'      => $shipping['tel03'],
+        'order_zip01'      => $shipping['zip01'],
+        'order_zip02'      => $shipping['zip02'],
+        'order_zipcode'    => $shipping['zipcode'],
+        'order_country_id' => 392,
+        'order_pref'       => $shipping['pref'],
+        'order_addr01'     => $shipping['addr01'],
+        'order_addr02'     => $shipping['addr02'],
+        'subtotal'         => $amount,
+        'discount'         => 0,
+        'deliv_fee'        => 0,
+        'charge'           => 0,
+        'use_point'        => 0,
+        'add_point'        => 0,
+        'tax'              => 0,
+        'total'            => $amount,
+        'payment_total'    => $amount,
+        'payment_id'       => $paymentId,
+        'payment_method'   => $paymentMethod,
+        'note'             => x402OrderNote($productSku, $merchantOrderId, $clientReferenceId, $txHash, $payer),
+        'status'           => defined('ORDER_PRE_END') ? ORDER_PRE_END : 6,
+        'payment_date'     => 'CURRENT_TIMESTAMP',
+        'device_type_id'   => 10,
+        'del_flg'          => 0,
+        'memo01'           => 'uniple x402',
+        'memo02'           => $productSku,
+        'memo03'           => $txHash,
+    );
+
+    try {
+        $objQuery->begin();
+        $orderId = SC_Helper_Purchase_Ex::registerOrder(null, $orderParams);
+        SC_Helper_Purchase_Ex::registerOrderDetail($orderId, array(array(
+            'order_id'             => $orderId,
+            'product_id'           => (int) $product['product_id'],
+            'product_class_id'     => (int) $product['product_class_id'],
+            'product_name'         => $itemName,
+            'product_code'         => (string) $product['product_code'],
+            'classcategory_name1'  => (string) $product['classcategory_name1'],
+            'classcategory_name2'  => (string) $product['classcategory_name2'],
+            'price'                => $amount,
+            'quantity'             => 1,
+            'point_rate'           => 0,
+            'tax_rate'             => 0,
+            'tax_rule'             => 0,
+        )));
+        $objQuery->insert('dtb_shipping', array(
+            'shipping_id'         => 0,
+            'order_id'            => $orderId,
+            'shipping_name01'     => $shipping['name01'],
+            'shipping_name02'     => $shipping['name02'],
+            'shipping_kana01'     => $shipping['kana01'],
+            'shipping_kana02'     => $shipping['kana02'],
+            'shipping_tel01'      => $shipping['tel01'],
+            'shipping_tel02'      => $shipping['tel02'],
+            'shipping_tel03'      => $shipping['tel03'],
+            'shipping_country_id' => 392,
+            'shipping_pref'       => $shipping['pref'],
+            'shipping_zip01'      => $shipping['zip01'],
+            'shipping_zip02'      => $shipping['zip02'],
+            'shipping_zipcode'    => $shipping['zipcode'],
+            'shipping_addr01'     => $shipping['addr01'],
+            'shipping_addr02'     => $shipping['addr02'],
+            'create_date'         => 'CURRENT_TIMESTAMP',
+            'update_date'         => 'CURRENT_TIMESTAMP',
+            'del_flg'             => 0,
+        ));
+        $objQuery->insert('dtb_shipment_item', array(
+            'shipping_id'         => 0,
+            'product_class_id'    => (int) $product['product_class_id'],
+            'order_id'            => $orderId,
+            'product_name'        => $itemName,
+            'product_code'        => (string) $product['product_code'],
+            'classcategory_name1' => (string) $product['classcategory_name1'],
+            'classcategory_name2' => (string) $product['classcategory_name2'],
+            'price'               => $amount,
+            'quantity'            => 1,
+        ));
+        $objQuery->commit();
+    } catch (Exception $e) {
+        $objQuery->rollback();
+        UnipleJpyc_Client::printLog('[uniple-webhook] x402_order_creation_failed productSku=' . $productSku . ' error=' . $e->getMessage());
+        return array(500, array('ok' => false, 'error' => 'x402_order_creation_failed'));
+    }
+
+    UnipleJpyc_Client::printLog('[uniple-webhook] x402_order_created orderId=' . $orderId . ' productSku=' . $productSku);
+
+    return array(200, array('ok' => true, 'x402' => true, 'orderId' => (int) $orderId));
+}
+
+function findX402ProductClass(SC_Query_Ex $objQuery, $productSku)
+{
+    if (!preg_match('/^eccube2-product-(\d+)-class-(\d+)$/', (string) $productSku, $m)) {
+        return null;
+    }
+
+    $columns = implode(', ', array(
+        'p.product_id',
+        'p.name',
+        'pc.product_class_id',
+        'pc.product_code',
+        'pc.classcategory_id1',
+        'pc.classcategory_id2',
+        'COALESCE(cc1.name, \'\') AS classcategory_name1',
+        'COALESCE(cc2.name, \'\') AS classcategory_name2',
+    ));
+    $from = 'dtb_products p'
+        . ' INNER JOIN dtb_products_class pc ON p.product_id = pc.product_id'
+        . ' LEFT JOIN dtb_classcategory cc1 ON pc.classcategory_id1 = cc1.classcategory_id'
+        . ' LEFT JOIN dtb_classcategory cc2 ON pc.classcategory_id2 = cc2.classcategory_id';
+
+    return $objQuery->getRow(
+        $columns,
+        $from,
+        'p.product_id = ? AND pc.product_class_id = ? AND p.del_flg = 0 AND pc.del_flg = 0',
+        array((int) $m[1], (int) $m[2])
+    );
+}
+
+function readPayloadString(array $data, array $keys)
+{
+    foreach ($keys as $key) {
+        if (isset($data[$key]) && is_scalar($data[$key])) {
+            return trim((string) $data[$key]);
+        }
+    }
+
+    return '';
+}
+
+function readPayloadStringFrom(array $data, array $keys)
+{
+    return readPayloadString($data, $keys);
+}
+
+function x402ShippingAddress(SC_Query_Ex $objQuery, array $data, $payer)
+{
+    $shipping = x402ShippingPayload($data);
+    list($fallbackName01, $fallbackName02) = x402BuyerName($data, $payer);
+
+    $name01 = readPayloadStringFrom($shipping, array('name01', 'lastName', 'last_name', 'familyName', 'family_name'));
+    $name02 = readPayloadStringFrom($shipping, array('name02', 'firstName', 'first_name', 'givenName', 'given_name'));
+    $fullName = readPayloadStringFrom($shipping, array('name', 'fullName', 'full_name', 'recipientName', 'recipient_name', 'shippingName', 'shipping_name'));
+    if (($name01 === '' || $name02 === '') && $fullName !== '') {
+        $parts = preg_split('/\s+/u', $fullName, 2, PREG_SPLIT_NO_EMPTY);
+        if ($name01 === '') {
+            $name01 = isset($parts[0]) ? $parts[0] : '';
+        }
+        if ($name02 === '') {
+            $name02 = isset($parts[1]) ? $parts[1] : '';
+        }
+    }
+    if ($name01 === '') {
+        $name01 = $fallbackName01;
+    }
+    if ($name02 === '') {
+        $name02 = $fallbackName02;
+    }
+
+    $kana01 = readPayloadStringFrom($shipping, array('kana01', 'kanaLastName', 'kana_last_name'));
+    $kana02 = readPayloadStringFrom($shipping, array('kana02', 'kanaFirstName', 'kana_first_name'));
+    if ($kana01 === '') {
+        $kana01 = 'エックス';
+    }
+    if ($kana02 === '') {
+        $kana02 = 'バイヤー';
+    }
+
+    $city = readPayloadStringFrom($shipping, array('city', 'municipality', 'ward'));
+    $line1 = readPayloadStringFrom($shipping, array('addr01', 'address1', 'address_1', 'addressLine1', 'address_line1', 'line1', 'streetAddress', 'street_address'));
+    $addr01 = trim($city . ' ' . $line1);
+    if ($addr01 === '') {
+        $addr01 = 'x402';
+    }
+    $addr02 = readPayloadStringFrom($shipping, array('addr02', 'address2', 'address_2', 'addressLine2', 'address_line2', 'line2', 'building', 'apartment', 'room'));
+    if ($addr02 === '') {
+        $addr02 = 'AI purchase';
+    }
+
+    $tel = splitTel(readPayloadStringFrom($shipping, array('phoneNumber', 'phone_number', 'phone', 'tel', 'telephone')));
+    $zip = splitZip(readPayloadStringFrom($shipping, array('postalCode', 'postal_code', 'postCode', 'post_code', 'zipCode', 'zip_code', 'zipcode', 'zip')));
+
+    return array(
+        'name01'  => mb_substr($name01, 0, 255),
+        'name02'  => mb_substr($name02, 0, 255),
+        'kana01'  => mb_substr($kana01, 0, 255),
+        'kana02'  => mb_substr($kana02, 0, 255),
+        'email'   => mb_substr(readPayloadStringFrom($shipping, array('email', 'mail')), 0, 255),
+        'tel01'   => $tel[0],
+        'tel02'   => $tel[1],
+        'tel03'   => $tel[2],
+        'zip01'   => $zip[0],
+        'zip02'   => $zip[1],
+        'zipcode' => $zip[0] . $zip[1],
+        'pref'    => x402ResolvePref($objQuery, $shipping),
+        'addr01'  => mb_substr($addr01, 0, 255),
+        'addr02'  => mb_substr($addr02, 0, 255),
+    );
+}
+
+function x402ShippingPayload(array $data)
+{
+    foreach (array('shipping', 'shippingAddress', 'shipping_address', 'delivery', 'recipient') as $key) {
+        if (isset($data[$key]) && is_array($data[$key])) {
+            return $data[$key];
+        }
+    }
+
+    return array();
+}
+
+function x402ResolvePref(SC_Query_Ex $objQuery, array $shipping)
+{
+    $prefId = readPayloadStringFrom($shipping, array('prefId', 'pref_id', 'prefectureId', 'prefecture_id'));
+    if ($prefId !== '' && ctype_digit($prefId)) {
+        $exists = $objQuery->getOne('SELECT id FROM mtb_pref WHERE id = ?', array((int) $prefId));
+        if ($exists !== false && $exists !== null) {
+            return (int) $prefId;
+        }
+    }
+
+    $prefName = readPayloadStringFrom($shipping, array('pref', 'prefecture', 'state', 'province', 'region'));
+    if ($prefName !== '') {
+        $prefName = normalizePrefName($prefName);
+        $id = $objQuery->getOne('SELECT id FROM mtb_pref WHERE name = ?', array($prefName));
+        if ($id !== false && $id !== null) {
+            return (int) $id;
+        }
+    }
+
+    return 13;
+}
+
+function normalizePrefName($prefName)
+{
+    $prefName = trim((string) $prefName);
+    $map = array(
+        'tokyo' => '東京都',
+        'tokyo-to' => '東京都',
+        'osaka' => '大阪府',
+        'osaka-fu' => '大阪府',
+        'kyoto' => '京都府',
+        'kyoto-fu' => '京都府',
+        'hokkaido' => '北海道',
+        'kanagawa' => '神奈川県',
+        'saitama' => '埼玉県',
+        'chiba' => '千葉県',
+        'aichi' => '愛知県',
+        'fukuoka' => '福岡県',
+    );
+    $key = strtolower(str_replace(array(' ', '_'), '-', $prefName));
+
+    return isset($map[$key]) ? $map[$key] : $prefName;
+}
+
+function x402BuyerName(array $data, $payer)
+{
+    $raw = readPayloadString($data, array('buyerName', 'buyer_name', 'name'));
+    if ($raw === '' && $payer !== '') {
+        $raw = 'x402 ' . substr($payer, 0, 12);
+    }
+    if ($raw === '') {
+        return array('x402', 'Buyer');
+    }
+
+    $parts = preg_split('/\s+/u', $raw, 2, PREG_SPLIT_NO_EMPTY);
+    $name01 = isset($parts[0]) && $parts[0] !== '' ? mb_substr($parts[0], 0, 255) : 'x402';
+    $name02 = isset($parts[1]) && $parts[1] !== '' ? mb_substr($parts[1], 0, 255) : 'Buyer';
+
+    return array($name01, $name02);
+}
+
+function x402OrderNote($productSku, $merchantOrderId, $clientReferenceId, $txHash, $payer)
+{
+    $lines = array(
+        'uniple x402 purchase',
+        'productSku: ' . $productSku,
+    );
+    if ($merchantOrderId !== '') {
+        $lines[] = 'merchantOrderId: ' . $merchantOrderId;
+    }
+    if ($clientReferenceId !== '') {
+        $lines[] = 'clientReferenceId: ' . $clientReferenceId;
+    }
+    if ($txHash !== '') {
+        $lines[] = 'txHash: ' . $txHash;
+    }
+    if ($payer !== '') {
+        $lines[] = 'payer: ' . $payer;
+    }
+
+    return mb_substr(implode("\n", $lines), 0, 4000);
+}
+
+function splitTel($value)
+{
+    $digits = preg_replace('/\D+/', '', (string) $value);
+    if ($digits === '') {
+        $digits = '0000000000';
+    }
+    if (strlen($digits) === 10) {
+        return array(substr($digits, 0, 3), substr($digits, 3, 3), substr($digits, 6, 4));
+    }
+
+    return array(substr($digits, 0, 3), substr($digits, 3, 4), substr($digits, 7, 4));
+}
+
+function splitZip($value)
+{
+    $digits = preg_replace('/\D+/', '', (string) $value);
+    if ($digits === '') {
+        $digits = '0000000';
+    }
+    $digits = str_pad(substr($digits, 0, 7), 7, '0', STR_PAD_RIGHT);
+
+    return array(substr($digits, 0, 3), substr($digits, 3, 4));
+}
+
+function safeToOrderAmount($value)
+{
+    if ($value === null || $value === '' || $value === false) {
+        return null;
+    }
+    $s = trim((string) $value);
+    if (!preg_match('/^(\d+)(?:\.(\d{1,6}))?$/', $s, $m)) {
+        return null;
+    }
+    $integer = ltrim($m[1], '0');
+    $integer = $integer === '' ? '0' : $integer;
+    $fraction = isset($m[2]) ? rtrim($m[2], '0') : '';
+    if ($integer === '0' && $fraction === '') {
+        return null;
+    }
+    if (strlen($fraction) > 2) {
+        return null;
+    }
+
+    return $fraction === '' ? $integer : $integer . '.' . $fraction;
 }
 
 function handleCanceled(SC_Query_Ex $objQuery, $sessionId, $event)
