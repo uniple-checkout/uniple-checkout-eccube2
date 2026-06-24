@@ -41,6 +41,29 @@ CREATE TABLE IF NOT EXISTS plg_uniple_jpyc_intent_mapping (
     INDEX ix_order_id (order_id)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS plg_uniple_jpyc_x402_quote (
+    id                      BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    quote_id                VARCHAR(80)  NOT NULL,
+    product_sku             VARCHAR(120) NOT NULL,
+    product_id              INT UNSIGNED NOT NULL,
+    product_class_id        INT UNSIGNED NOT NULL,
+    quantity                INT UNSIGNED NOT NULL,
+    product_subtotal_jpyc   VARCHAR(32)  NOT NULL,
+    shipping_fee_jpyc       VARCHAR(32)  NOT NULL,
+    discount_jpyc           VARCHAR(32)  NOT NULL DEFAULT '0',
+    total_jpyc              VARCHAR(32)  NOT NULL,
+    shipping_json           LONGTEXT     NOT NULL,
+    deliv_id                INT UNSIGNED NULL DEFAULT NULL,
+    deliv_name              VARCHAR(255) NOT NULL DEFAULT '',
+    created_at              DATETIME     NOT NULL,
+    expires_at              DATETIME     NOT NULL,
+    used_at                 DATETIME     NULL DEFAULT NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_x402_quote_id (quote_id),
+    INDEX ix_x402_quote_product_sku (product_sku),
+    INDEX ix_x402_quote_expires_at (expires_at)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci ENGINE=InnoDB;
+
 -- Singleton config row 初期化
 INSERT IGNORE INTO plg_uniple_jpyc_config (id, api_key, webhook_secret, merchant_label, api_base_url, mode)
 VALUES (1, '', '', '', 'https://uniple.io', 'live');

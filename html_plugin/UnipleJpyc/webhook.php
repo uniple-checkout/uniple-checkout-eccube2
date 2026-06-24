@@ -37,6 +37,7 @@
 require_once realpath(dirname(__FILE__) . '/../../require.php');
 
 require_once realpath(dirname(__FILE__) . '/../../../data/downloads/plugin/UnipleJpyc/lib/UnipleJpyc_Client.php');
+require_once realpath(dirname(__FILE__) . '/../../../data/downloads/plugin/UnipleJpyc/lib/UnipleJpyc_X402Quote.php');
 
 header('Content-Type: application/json; charset=UTF-8');
 
@@ -256,7 +257,8 @@ function handleX402Completed(SC_Query_Ex $objQuery, array $data, $idempotencyRef
         return array(400, array('ok' => false, 'error' => 'x402_missing_required_field'));
     }
 
-    $product = findX402ProductClass($objQuery, $productSku);
+    $quoteService = new UnipleJpyc_X402Quote($objQuery);
+    $product = $quoteService->findProductClass($productSku);
     if (!$product) {
         UnipleJpyc_Client::printLog('[uniple-webhook] x402_product_not_found productSku=' . $productSku);
         return array(404, array('ok' => false, 'error' => 'product_not_found'));
@@ -268,6 +270,31 @@ function handleX402Completed(SC_Query_Ex $objQuery, array $data, $idempotencyRef
         return array(200, array('ok' => true, 'duplicate' => true, 'orderId' => (int) $existing['order_id']));
     }
 
+    $quoteId = readPayloadString($data, array('quoteId', 'quote_id'));
+    $quote = null;
+    $quantity = 1;
+    $productSubtotal = $amount;
+    $shippingFee = '0';
+    $discount = '0';
+    $total = $amount;
+    if ($quoteId !== '') {
+        $quote = $quoteService->findQuote($quoteId);
+        if (!$quote) {
+            UnipleJpyc_Client::printLog('[uniple-webhook] x402_quote_not_found quoteId=' . UnipleJpyc_Client::maskToken($quoteId) . ' productSku=' . $productSku);
+            return array(400, array('ok' => false, 'error' => 'quote_not_found'));
+        }
+        $quoteError = validateX402Quote($quote, $data, $productSku, $amount, $product);
+        if ($quoteError !== null) {
+            UnipleJpyc_Client::printLog('[uniple-webhook] x402_quote_validation_failed quoteId=' . UnipleJpyc_Client::maskToken($quoteId) . ' error=' . $quoteError . ' productSku=' . $productSku);
+            return array(400, array('ok' => false, 'error' => $quoteError));
+        }
+        $quantity = (int) $quote['quantity'];
+        $productSubtotal = (string) $quote['product_subtotal_jpyc'];
+        $shippingFee = (string) $quote['shipping_fee_jpyc'];
+        $discount = (string) $quote['discount_jpyc'];
+        $total = (string) $quote['total_jpyc'];
+    }
+
     $payer = readPayloadString($data, array('payer', 'from'));
     $merchantOrderId = readPayloadString($data, array('merchantOrderId', 'merchant_order_id'));
     $clientReferenceId = readPayloadString($data, array('clientReferenceId', 'client_reference_id'));
@@ -276,7 +303,14 @@ function handleX402Completed(SC_Query_Ex $objQuery, array $data, $idempotencyRef
     if ($itemName === '') {
         $itemName = (string) $product['name'];
     }
-    $shipping = x402ShippingAddress($objQuery, $data, $payer);
+    $shippingData = $data;
+    if ($quote) {
+        $quoteShipping = json_decode((string) $quote['shipping_json'], true);
+        if (is_array($quoteShipping)) {
+            $shippingData['shipping'] = $quoteShipping;
+        }
+    }
+    $shipping = x402ShippingAddress($objQuery, $shippingData, $payer);
     $email = readPayloadString($data, array('email', 'buyerEmail', 'buyer_email', 'payerEmail', 'payer_email'));
     if ($email === '') {
         $email = $shipping['email'];
@@ -314,18 +348,19 @@ function handleX402Completed(SC_Query_Ex $objQuery, array $data, $idempotencyRef
         'order_pref'       => $shipping['pref'],
         'order_addr01'     => $shipping['addr01'],
         'order_addr02'     => $shipping['addr02'],
-        'subtotal'         => $amount,
-        'discount'         => 0,
-        'deliv_fee'        => 0,
+        'subtotal'         => $productSubtotal,
+        'discount'         => $discount,
+        'deliv_fee'        => $shippingFee,
         'charge'           => 0,
         'use_point'        => 0,
         'add_point'        => 0,
         'tax'              => 0,
-        'total'            => $amount,
-        'payment_total'    => $amount,
+        'total'            => $total,
+        'payment_total'    => $total,
+        'deliv_id'         => $quote && isset($quote['deliv_id']) ? (int) $quote['deliv_id'] : null,
         'payment_id'       => $paymentId,
         'payment_method'   => $paymentMethod,
-        'note'             => x402OrderNote($productSku, $merchantOrderId, $clientReferenceId, $txHash, $payer),
+        'note'             => x402OrderNote($productSku, $merchantOrderId, $clientReferenceId, $txHash, $payer, $quoteId, $shippingFee, $total),
         'status'           => defined('ORDER_PRE_END') ? ORDER_PRE_END : 6,
         'payment_date'     => 'CURRENT_TIMESTAMP',
         'device_type_id'   => 10,
@@ -334,6 +369,15 @@ function handleX402Completed(SC_Query_Ex $objQuery, array $data, $idempotencyRef
         'memo02'           => $productSku,
         'memo03'           => $txHash,
     );
+    if (!$quote) {
+        unset($orderParams['deliv_id']);
+    }
+
+    $unitPrice = unitPriceFromSubtotal($productSubtotal, $quantity);
+    if ($unitPrice === null) {
+        UnipleJpyc_Client::printLog('[uniple-webhook] x402_invalid_quote_subtotal productSku=' . $productSku . ' subtotal=' . $productSubtotal . ' quantity=' . $quantity);
+        return array(400, array('ok' => false, 'error' => 'quote_amount_mismatch'));
+    }
 
     try {
         $objQuery->begin();
@@ -346,8 +390,8 @@ function handleX402Completed(SC_Query_Ex $objQuery, array $data, $idempotencyRef
             'product_code'         => (string) $product['product_code'],
             'classcategory_name1'  => (string) $product['classcategory_name1'],
             'classcategory_name2'  => (string) $product['classcategory_name2'],
-            'price'                => $amount,
-            'quantity'             => 1,
+            'price'                => $unitPrice,
+            'quantity'             => $quantity,
             'point_rate'           => 0,
             'tax_rate'             => 0,
             'tax_rule'             => 0,
@@ -381,9 +425,12 @@ function handleX402Completed(SC_Query_Ex $objQuery, array $data, $idempotencyRef
             'product_code'        => (string) $product['product_code'],
             'classcategory_name1' => (string) $product['classcategory_name1'],
             'classcategory_name2' => (string) $product['classcategory_name2'],
-            'price'               => $amount,
-            'quantity'            => 1,
+            'price'               => $unitPrice,
+            'quantity'            => $quantity,
         ));
+        if ($quote) {
+            $quoteService->markUsed($quoteId);
+        }
         $objQuery->commit();
     } catch (Exception $e) {
         $objQuery->rollback();
@@ -391,9 +438,97 @@ function handleX402Completed(SC_Query_Ex $objQuery, array $data, $idempotencyRef
         return array(500, array('ok' => false, 'error' => 'x402_order_creation_failed'));
     }
 
-    UnipleJpyc_Client::printLog('[uniple-webhook] x402_order_created orderId=' . $orderId . ' productSku=' . $productSku);
+    UnipleJpyc_Client::printLog('[uniple-webhook] x402_order_created orderId=' . $orderId . ' productSku=' . $productSku . ' quoteId=' . UnipleJpyc_Client::maskToken($quoteId));
 
     return array(200, array('ok' => true, 'x402' => true, 'orderId' => (int) $orderId));
+}
+
+function validateX402Quote(array $quote, array $data, $productSku, $amount, array $product)
+{
+    if (!empty($quote['used_at'])) {
+        return 'quote_already_used';
+    }
+    if (strtotime($quote['expires_at']) <= time()) {
+        return 'quote_expired';
+    }
+    if ((string) $quote['product_sku'] !== (string) $productSku || (int) $quote['product_class_id'] !== (int) $product['product_class_id']) {
+        return 'quote_product_mismatch';
+    }
+    if ((string) $quote['total_jpyc'] !== (string) $amount) {
+        return 'quote_amount_mismatch';
+    }
+
+    $quantity = readPayloadString($data, array('quantity', 'qty'));
+    if ($quantity !== '' && (!ctype_digit($quantity) || (int) $quantity !== (int) $quote['quantity'])) {
+        return 'quote_quantity_mismatch';
+    }
+
+    $subtotal = readPayloadAmount($data, array('productSubtotalJpyc', 'product_subtotal_jpyc'));
+    if ($subtotal !== null && $subtotal !== (string) $quote['product_subtotal_jpyc']) {
+        return 'quote_product_subtotal_mismatch';
+    }
+    $shippingFee = readPayloadAmount($data, array('shippingFeeJpyc', 'shipping_fee_jpyc'));
+    if ($shippingFee !== null && $shippingFee !== (string) $quote['shipping_fee_jpyc']) {
+        return 'quote_shipping_fee_mismatch';
+    }
+    $total = readPayloadAmount($data, array('totalJpyc', 'total_jpyc'));
+    if ($total !== null && $total !== (string) $quote['total_jpyc']) {
+        return 'quote_total_mismatch';
+    }
+
+    return null;
+}
+
+function readPayloadAmount(array $data, array $keys)
+{
+    foreach ($keys as $key) {
+        if (array_key_exists($key, $data)) {
+            $amount = safeToQuoteAmount($data[$key]);
+
+            return $amount === null ? '__invalid__' : $amount;
+        }
+    }
+
+    return null;
+}
+
+function safeToQuoteAmount($value)
+{
+    if ($value === null || $value === '' || $value === false || !is_scalar($value)) {
+        return null;
+    }
+    $s = trim((string) $value);
+    if (!preg_match('/^(\d+)(?:\.(\d{1,6}))?$/', $s, $m)) {
+        return null;
+    }
+    $integer = ltrim($m[1], '0');
+    $integer = $integer === '' ? '0' : $integer;
+    $fraction = isset($m[2]) ? rtrim($m[2], '0') : '';
+    if (strlen($fraction) > 2) {
+        return null;
+    }
+
+    return $fraction === '' ? $integer : $integer . '.' . $fraction;
+}
+
+function unitPriceFromSubtotal($productSubtotal, $quantity)
+{
+    $quantity = (int) $quantity;
+    if ($quantity < 1) {
+        return null;
+    }
+    if ($quantity === 1) {
+        return (string) $productSubtotal;
+    }
+    if (!ctype_digit((string) $productSubtotal)) {
+        return null;
+    }
+    $subtotal = (int) $productSubtotal;
+    if ($subtotal % $quantity !== 0) {
+        return null;
+    }
+
+    return (string) ((int) ($subtotal / $quantity));
 }
 
 function findX402ProductClass(SC_Query_Ex $objQuery, $productSku)
@@ -527,7 +662,7 @@ function x402ResolvePref(SC_Query_Ex $objQuery, array $shipping)
         }
     }
 
-    $prefName = readPayloadStringFrom($shipping, array('pref', 'prefecture', 'state', 'province', 'region'));
+    $prefName = readPayloadStringFrom($shipping, array('pref', 'prefName', 'pref_name', 'prefecture', 'state', 'province', 'region'));
     if ($prefName !== '') {
         $prefName = normalizePrefName($prefName);
         $id = $objQuery->getOne('SELECT id FROM mtb_pref WHERE name = ?', array($prefName));
@@ -578,12 +713,15 @@ function x402BuyerName(array $data, $payer)
     return array($name01, $name02);
 }
 
-function x402OrderNote($productSku, $merchantOrderId, $clientReferenceId, $txHash, $payer)
+function x402OrderNote($productSku, $merchantOrderId, $clientReferenceId, $txHash, $payer, $quoteId = '', $shippingFeeJpyc = '', $totalJpyc = '')
 {
     $lines = array(
         'uniple x402 purchase',
         'productSku: ' . $productSku,
     );
+    if ($quoteId !== '') {
+        $lines[] = 'quoteId: ' . $quoteId;
+    }
     if ($merchantOrderId !== '') {
         $lines[] = 'merchantOrderId: ' . $merchantOrderId;
     }
@@ -595,6 +733,12 @@ function x402OrderNote($productSku, $merchantOrderId, $clientReferenceId, $txHas
     }
     if ($payer !== '') {
         $lines[] = 'payer: ' . $payer;
+    }
+    if ($shippingFeeJpyc !== '') {
+        $lines[] = 'shippingFeeJpyc: ' . $shippingFeeJpyc;
+    }
+    if ($totalJpyc !== '') {
+        $lines[] = 'totalJpyc: ' . $totalJpyc;
     }
 
     return mb_substr(implode("\n", $lines), 0, 4000);
@@ -626,7 +770,7 @@ function splitZip($value)
 
 function safeToOrderAmount($value)
 {
-    if ($value === null || $value === '' || $value === false) {
+    if ($value === null || $value === '' || $value === false || !is_scalar($value)) {
         return null;
     }
     $s = trim((string) $value);
