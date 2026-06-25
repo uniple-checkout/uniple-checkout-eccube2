@@ -114,6 +114,11 @@
             <button type="submit" class="btn" onclick="document.getElementById('form_action').value='x402_sync';">x402商品同期</button>
         </p>
         <!--{if !empty($x402Products)}-->
+        <p style="margin:12px 0 8px;">
+            <button type="button" class="btn" onclick="unipleX402SetAiTarget('all');">全て選択</button>
+            <button type="button" class="btn" onclick="unipleX402SetAiTarget('none');">全て解除</button>
+            <button type="button" class="btn" onclick="unipleX402SetAiTarget('ec_active');">EC側で有効な商品だけ選択</button>
+        </p>
         <table class="list" style="margin-top:12px; width:100%;">
             <tr>
                 <th style="width:70px;">AI購入対象</th>
@@ -124,7 +129,7 @@
             <!--{foreach from=$x402Products item=product}-->
             <tr>
                 <td style="text-align:center;">
-                    <input type="checkbox" name="x402_ai_enabled[]" value="<!--{$product.externalId|escape}-->" <!--{if $product.aiEnabled}-->checked="checked"<!--{/if}--> />
+                    <input type="checkbox" class="uniple-x402-ai-target" data-ec-active="<!--{if $product.ecActive}-->1<!--{else}-->0<!--{/if}-->" name="x402_ai_enabled[]" value="<!--{$product.externalId|escape}-->" <!--{if $product.aiEnabled}-->checked="checked"<!--{/if}--> />
                 </td>
                 <td>
                     <!--{$product.name|escape}--><br>
@@ -163,3 +168,18 @@
 </div>
 
 </form>
+
+<script type="text/javascript">
+function unipleX402SetAiTarget(mode) {
+    var boxes = document.querySelectorAll('.uniple-x402-ai-target');
+    for (var i = 0; i < boxes.length; i++) {
+        if (mode === 'all') {
+            boxes[i].checked = true;
+        } else if (mode === 'none') {
+            boxes[i].checked = false;
+        } else if (mode === 'ec_active') {
+            boxes[i].checked = boxes[i].getAttribute('data-ec-active') === '1';
+        }
+    }
+}
+</script>

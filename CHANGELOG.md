@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.7] - 2026-06-25
+### Added
+- AI購入対象チェックボックスに一括選択・一括解除・EC側で有効な商品だけ選択の操作を追加
+
 ## [0.1.6] - 2026-06-25
 ### Added
 - x402 / AI購入の商品規格単位ON/OFF設定を追加
