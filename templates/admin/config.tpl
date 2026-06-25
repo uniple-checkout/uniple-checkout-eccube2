@@ -109,6 +109,7 @@
         EC-CUBE2の商品マスタをunipleの商品catalogへ同期します。公開中・販売可能・価格ありの商品規格は「有効」として同期されます。<br>
         通常のHosted Checkout / LINE / WalletConnect決済フローは変更されません。
         <!--{if !empty($arrErr.x402_sync)}--><p class="attention"><!--{$arrErr.x402_sync|escape}--></p><!--{/if}-->
+        <!--{if !empty($x402SyncMessage)}--><p class="message" style="color:green; margin:8px 0 0;"><!--{$x402SyncMessage|escape}--></p><!--{/if}-->
         <p style="margin:12px 0 0;">
             <button type="submit" class="btn" onclick="document.getElementById('form_action').value='x402_sync';">x402商品同期</button>
         </p>

@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.5] - 2026-06-25
+### Fixed
+- 管理画面のx402商品同期結果を同期ボタン付近にも表示し、同期成否を確認しやすく修正
+
 ## [0.1.4] - 2026-06-25
 ### Fixed
 - 管理画面のx402商品同期後にEC-CUBE2のクエリ状態が残り、設定再読込でシステムエラーになる問題を修正

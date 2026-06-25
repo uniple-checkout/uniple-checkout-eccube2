@@ -37,6 +37,9 @@ class LC_Page_Plugin_UnipleJpyc_Config extends LC_Page_Admin_Ex
     /** @var string plugin code */
     public $plugin_code = 'UnipleJpyc';
 
+    /** @var string x402 sync success message shown near the sync button */
+    public $x402SyncMessage = '';
+
     public function init()
     {
         parent::init();
@@ -119,13 +122,15 @@ class LC_Page_Plugin_UnipleJpyc_Config extends LC_Page_Admin_Ex
                     ));
                     $sync = new UnipleJpyc_X402ProductSync($objQuery, $client);
                     $result = $sync->syncAll();
-                    $this->arrInfo[] = sprintf(
+                    $message = sprintf(
                         'x402商品同期を実行しました。同期: %d件 / 有効: %d件 / 無効: %d件 / 同期対象外: %d件',
                         $result['synced'],
                         $result['active'],
                         $result['inactive'],
                         $result['skipped']
                     );
+                    $this->x402SyncMessage = $message;
+                    $this->arrInfo[] = $message;
                 } catch (Exception $e) {
                     $this->arrErr['x402_sync'] = 'x402商品同期に失敗しました: ' . $e->getMessage();
                     UnipleJpyc_Client::printLog('[uniple-x402] product sync failed error=' . $e->getMessage());
