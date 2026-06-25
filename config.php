@@ -132,6 +132,7 @@ class LC_Page_Plugin_UnipleJpyc_Config extends LC_Page_Admin_Ex
                 }
             }
 
+            $objQuery->setOrder('');
             $row = $objQuery->getRow('*', 'plg_uniple_jpyc_config', 'id = ?', array(1));
             if ($row) {
                 $this->arrForm = $this->prepareFormForDisplay($row);

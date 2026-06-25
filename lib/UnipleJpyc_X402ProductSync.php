@@ -107,8 +107,10 @@ class UnipleJpyc_X402ProductSync
         $from = 'dtb_products p INNER JOIN dtb_products_class pc ON p.product_id = pc.product_id';
         $where = 'p.del_flg = 0';
         $this->objQuery->setOrder('p.product_id ASC, pc.product_class_id ASC');
+        $rows = $this->objQuery->select($columns, $from, $where);
+        $this->objQuery->setOrder('');
 
-        return $this->objQuery->select($columns, $from, $where);
+        return $rows;
     }
 
     private function externalId($row)

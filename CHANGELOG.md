@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.4] - 2026-06-25
+### Fixed
+- 管理画面のx402商品同期後にEC-CUBE2のクエリ状態が残り、設定再読込でシステムエラーになる問題を修正
+
 ## [0.1.3] - 2026-06-23
 ### Fixed
 - CLIからx402商品同期を実行する場合に、公開商品URLへ `UNIPLE_PUBLIC_SITE_URL` を指定できるように修正
