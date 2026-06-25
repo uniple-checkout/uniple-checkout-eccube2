@@ -64,6 +64,16 @@ CREATE TABLE IF NOT EXISTS plg_uniple_jpyc_x402_quote (
     INDEX ix_x402_quote_expires_at (expires_at)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS plg_uniple_jpyc_x402_product_setting (
+    id            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    external_id   VARCHAR(120) NOT NULL,
+    ai_enabled    SMALLINT NOT NULL DEFAULT 1,
+    created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_x402_product_setting_external_id (external_id)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci ENGINE=InnoDB;
+
 -- Singleton config row 初期化
 INSERT IGNORE INTO plg_uniple_jpyc_config (id, api_key, webhook_secret, merchant_label, api_base_url, mode)
 VALUES (1, '', '', '', 'https://uniple.io', 'live');

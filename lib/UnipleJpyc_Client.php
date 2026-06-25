@@ -37,7 +37,7 @@ class UnipleJpyc_Client
      * plugin version (= plugin_info.php と同期手動維持、 release 時 bump 必須)。
      * 用途 = User-Agent header の telemetry / version tracing (= r47 採択)。
      */
-    const PLUGIN_VERSION = '0.1.5';
+    const PLUGIN_VERSION = '0.1.6';
 
     /** @var array {api_key, webhook_secret, merchant_label, api_base_url, mode} */
     private $config;
@@ -358,7 +358,7 @@ class UnipleJpyc_Client
      * @return array
      * @throws Exception
      */
-    public function syncProducts(array $products)
+    public function syncProducts(array $products, $replace = false, $scope = '')
     {
         if (count($products) > 200) {
             throw new InvalidArgumentException('products max 200');
@@ -372,9 +372,14 @@ class UnipleJpyc_Client
         }
 
         $endpoint = $baseUrl . '/api/merchant/products';
-        $jsonBody = json_encode(array(
+        $body = array(
             'products' => array_values($products),
-        ), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        );
+        if ($replace) {
+            $body['replace'] = true;
+            $body['scope'] = $scope !== '' ? (string) $scope : 'site';
+        }
+        $jsonBody = json_encode($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
         $ch = curl_init($endpoint);
         curl_setopt_array($ch, array(

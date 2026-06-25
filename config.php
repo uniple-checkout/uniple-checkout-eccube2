@@ -40,6 +40,9 @@ class LC_Page_Plugin_UnipleJpyc_Config extends LC_Page_Admin_Ex
     /** @var string x402 sync success message shown near the sync button */
     public $x402SyncMessage = '';
 
+    /** @var array x402 product-class AI purchase settings */
+    public $x402Products = array();
+
     public function init()
     {
         parent::init();
@@ -64,6 +67,14 @@ class LC_Page_Plugin_UnipleJpyc_Config extends LC_Page_Admin_Ex
 
         $formAction = isset($_POST['form_action']) ? $_POST['form_action'] : '';
         $currentRow = $objQuery->getRow('*', 'plg_uniple_jpyc_config', 'id = ?', array(1));
+
+        $syncManager = new UnipleJpyc_X402ProductSync($objQuery, new UnipleJpyc_Client(array(
+            'api_key'        => $currentRow ? $currentRow['api_key'] : '',
+            'webhook_secret' => $currentRow ? $currentRow['webhook_secret'] : '',
+            'merchant_label' => $currentRow ? $currentRow['merchant_label'] : '',
+            'api_base_url'   => $currentRow ? $currentRow['api_base_url'] : UnipleJpyc_Client::DEFAULT_API_BASE_URL,
+            'mode'           => $currentRow ? $currentRow['mode'] : 'live',
+        )));
 
         if ($formAction === 'save') {
             // CSRF: LC_Page_Admin の transactionid 機構
@@ -105,6 +116,28 @@ class LC_Page_Plugin_UnipleJpyc_Config extends LC_Page_Admin_Ex
             } else {
                 $this->arrErr = $arrErr;
                 $this->arrForm = $this->prepareFormForDisplay($arrParams, is_array($currentRow) ? $currentRow : array());
+            }
+        } elseif ($formAction === 'x402_settings_save') {
+            $this->doValidUnipleToken();
+            $enabled = isset($_POST['x402_ai_enabled']) && is_array($_POST['x402_ai_enabled'])
+                ? $_POST['x402_ai_enabled']
+                : array();
+            $saved = $syncManager->saveAiTargets($enabled);
+            $this->arrInfo[] = sprintf('AI購入対象設定を保存しました。対象商品: %d件', $saved);
+            if ($currentRow && trim((string) $currentRow['api_key']) !== '') {
+                $result = $syncManager->syncAll();
+                $message = sprintf(
+                    'x402商品同期を実行しました。同期: %d件 / 有効: %d件 / 無効: %d件 / 同期対象外: %d件',
+                    $result['synced'],
+                    $result['active'],
+                    $result['inactive'],
+                    $result['skipped']
+                );
+                $this->x402SyncMessage = $message;
+                $this->arrInfo[] = $message;
+            }
+            if ($currentRow) {
+                $this->arrForm = $this->prepareFormForDisplay($currentRow);
             }
         } elseif ($formAction === 'x402_sync') {
             $this->doValidUnipleToken();
@@ -164,6 +197,7 @@ class LC_Page_Plugin_UnipleJpyc_Config extends LC_Page_Admin_Ex
 
         // CSRF token
         $this->setUnipleTokenTo($this->arrForm);
+        $this->x402Products = $syncManager->listProductSettings();
     }
 
     private function initParam(SC_FormParam_Ex &$objFormParam)

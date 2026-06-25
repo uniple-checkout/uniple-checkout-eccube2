@@ -113,6 +113,32 @@
         <p style="margin:12px 0 0;">
             <button type="submit" class="btn" onclick="document.getElementById('form_action').value='x402_sync';">x402商品同期</button>
         </p>
+        <!--{if !empty($x402Products)}-->
+        <table class="list" style="margin-top:12px; width:100%;">
+            <tr>
+                <th style="width:70px;">AI購入対象</th>
+                <th>商品規格</th>
+                <th style="width:90px;">価格</th>
+                <th style="width:80px;">EC状態</th>
+            </tr>
+            <!--{foreach from=$x402Products item=product}-->
+            <tr>
+                <td style="text-align:center;">
+                    <input type="checkbox" name="x402_ai_enabled[]" value="<!--{$product.externalId|escape}-->" <!--{if $product.aiEnabled}-->checked="checked"<!--{/if}--> />
+                </td>
+                <td>
+                    <!--{$product.name|escape}--><br>
+                    <span class="info-msg"><!--{$product.externalId|escape}--></span>
+                </td>
+                <td><!--{if $product.priceJpyc ne ''}--><!--{$product.priceJpyc|escape}--> JPYC<!--{else}-->同期対象外<!--{/if}--></td>
+                <td><!--{if $product.ecActive}-->有効<!--{else}-->無効<!--{/if}--></td>
+            </tr>
+            <!--{/foreach}-->
+        </table>
+        <p style="margin:12px 0 0;">
+            <button type="submit" class="btn" onclick="document.getElementById('form_action').value='x402_settings_save';">AI購入対象設定を保存</button>
+        </p>
+        <!--{/if}-->
     </div>
 
     <!-- presskit 必須 3 行免責表記 -->

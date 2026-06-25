@@ -24,6 +24,7 @@ class UnipleJpyc_X402ProductSync
     {
         $this->objQuery = $objQuery;
         $this->client = $client;
+        $this->ensureSettingsTable();
     }
 
     /**
@@ -37,6 +38,7 @@ class UnipleJpyc_X402ProductSync
         $skippedCount = 0;
         $sortOrder = 0;
 
+        $aiSettings = $this->loadAiSettings();
         foreach ($this->loadProductClasses() as $row) {
             if (count($products) >= self::MAX_PRODUCTS_PER_SYNC) {
                 ++$skippedCount;
@@ -55,7 +57,8 @@ class UnipleJpyc_X402ProductSync
                 continue;
             }
 
-            $active = $this->isActive($row);
+            $externalId = $this->externalId($row);
+            $active = $this->isActive($row) && $this->isAiEnabled($externalId, $aiSettings);
             if ($active) {
                 ++$activeCount;
             } else {
@@ -63,7 +66,7 @@ class UnipleJpyc_X402ProductSync
             }
 
             $products[] = array(
-                'externalId'  => $this->externalId($row),
+                'externalId'  => $externalId,
                 'name'        => $this->productName($row),
                 'priceJpyc'   => $priceJpyc,
                 'active'      => $active,
@@ -75,7 +78,7 @@ class UnipleJpyc_X402ProductSync
             );
         }
 
-        $response = $this->client->syncProducts($products);
+        $response = $this->client->syncProducts($products, true, 'site');
         UnipleJpyc_Client::printLog('[uniple-x402] product sync completed synced=' . count($products) . ' active=' . $activeCount . ' inactive=' . $inactiveCount . ' skipped=' . $skippedCount);
 
         return array(
@@ -85,6 +88,60 @@ class UnipleJpyc_X402ProductSync
             'skipped'  => $skippedCount,
             'response' => $response,
         );
+    }
+
+    public function listProductSettings()
+    {
+        $settings = $this->loadAiSettings();
+        $items = array();
+        foreach ($this->loadProductClasses() as $row) {
+            $externalId = $this->externalId($row);
+            $priceJpyc = $this->normalizePriceJpyc(
+                SC_Helper_TaxRule_Ex::sfCalcIncTax(
+                    $row['price02'],
+                    (int) $row['product_id'],
+                    (int) $row['product_class_id']
+                )
+            );
+            $items[] = array(
+                'externalId' => $externalId,
+                'name' => $this->productName($row),
+                'priceJpyc' => $priceJpyc === null ? '' : $priceJpyc,
+                'ecActive' => $this->isActive($row),
+                'aiEnabled' => $this->isAiEnabled($externalId, $settings),
+            );
+        }
+
+        return $items;
+    }
+
+    public function saveAiTargets(array $enabledExternalIds)
+    {
+        $enabled = array();
+        foreach ($enabledExternalIds as $externalId) {
+            $enabled[(string) $externalId] = true;
+        }
+
+        $saved = 0;
+        foreach ($this->listProductSettings() as $item) {
+            $externalId = (string) $item['externalId'];
+            $aiEnabled = isset($enabled[$externalId]) ? 1 : 0;
+            $values = array(
+                'external_id' => $externalId,
+                'ai_enabled' => $aiEnabled,
+                'updated_at' => 'CURRENT_TIMESTAMP',
+            );
+            $exists = (int) $this->objQuery->count('plg_uniple_jpyc_x402_product_setting', 'external_id = ?', array($externalId));
+            if ($exists > 0) {
+                $this->objQuery->update('plg_uniple_jpyc_x402_product_setting', $values, 'external_id = ?', array($externalId));
+            } else {
+                $values['created_at'] = 'CURRENT_TIMESTAMP';
+                $this->objQuery->insert('plg_uniple_jpyc_x402_product_setting', $values);
+            }
+            ++$saved;
+        }
+
+        return $saved;
     }
 
     private function loadProductClasses()
@@ -111,6 +168,37 @@ class UnipleJpyc_X402ProductSync
         $this->objQuery->setOrder('');
 
         return $rows;
+    }
+
+    private function ensureSettingsTable()
+    {
+        $this->objQuery->query(<<<'SQL'
+CREATE TABLE IF NOT EXISTS plg_uniple_jpyc_x402_product_setting (
+    id            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    external_id   VARCHAR(120) NOT NULL,
+    ai_enabled    SMALLINT NOT NULL DEFAULT 1,
+    created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_x402_product_setting_external_id (external_id)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci ENGINE=InnoDB
+SQL
+        );
+    }
+
+    private function loadAiSettings()
+    {
+        $settings = array();
+        foreach ($this->objQuery->select('external_id, ai_enabled', 'plg_uniple_jpyc_x402_product_setting') as $row) {
+            $settings[(string) $row['external_id']] = (int) $row['ai_enabled'] === 1;
+        }
+
+        return $settings;
+    }
+
+    private function isAiEnabled($externalId, array $settings)
+    {
+        return !array_key_exists((string) $externalId, $settings) || $settings[(string) $externalId];
     }
 
     private function externalId($row)

@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.6] - 2026-06-25
+### Added
+- x402 / AI購入の商品規格単位ON/OFF設定を追加
+- 商品同期時に `replace:true, scope:"site"` を送信し、削除済み商品などのstale rowを無効化
+
 ## [0.1.5] - 2026-06-25
 ### Fixed
 - 管理画面のx402商品同期結果を同期ボタン付近にも表示し、同期成否を確認しやすく修正
